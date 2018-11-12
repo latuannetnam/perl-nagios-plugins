@@ -20,7 +20,8 @@ use strict;
 use warnings;
 use 5.008;
 #use lib '/usr/lib/nagios/plugins/lib';
-use Nagios::Plugin;
+# use Nagios::Plugin;
+use Nagios::Monitoring::Plugin;
 use Net::SNMP;
 use Data::Dumper;
 
@@ -42,6 +43,7 @@ my $OIDS32 = {
 	ifOutUcastPkts => '.1.3.6.1.2.1.2.2.1.17',
 #	ifOutDiscards => '.1.3.6.1.2.1.2.2.1.19',
 #	ifOutErrors => '.1.3.6.1.2.1.2.2.1.20',
+	ifAlias => '.1.3.6.1.2.1.31.1.1.1.18'
 };
 
 my $OIDS64 = {
@@ -55,9 +57,10 @@ my $OIDS64 = {
 #	ifInDiscards => '.1.3.6.1.2.1.2.2.1.13',
 #	ifInErrors => '.1.3.6.1.2.1.2.2.1.14',
 	ifOutOctets => '.1.3.6.1.2.1.31.1.1.1.10',
-	ifOutUcastPkts => '.1.3.6.1.2.1.31.1.1.1.11',
+	ifOutUcastPkts => '.1.3.6.1.2.1.31.1.1.1.11', 
 #	ifOutDiscards => '.1.3.6.1.2.1.2.2.1.19',
 #	ifOutErrors => '.1.3.6.1.2.1.2.2.1.20',
+	ifAlias => '.1.3.6.1.2.1.31.1.1.1.18'
 };
 
 my $IFSTATE = {
@@ -174,6 +177,7 @@ sub get_ifinfo($$$)
 			"$OIDS->{ifOutUcastPkts}.$ifid",
 #			"$OIDS->{ifOutDiscards}.$ifid",
 #			"$OIDS->{ifOutErrors}.$ifid",
+			"$OIDS->{ifAlias}.$ifid",
 		]
 	);
 
@@ -240,6 +244,10 @@ sub save_cached_ifinfo($$$$)
 		$np->nagios_die("unable to open datafile '$datafile.new': $!");
 	}
 
+    if ($ifinfo->{ifRealSpeed} <=0) 
+	{
+		$ifinfo->{ifRealSpeed} = 1000000000;
+	} 
 	print $fd Data::Dumper->new([$ifinfo])->Terse(1)->Purity(1)->Dump();
 	close($fd);
 	if (!rename($datafile . '.new', $datafile))
@@ -248,7 +256,7 @@ sub save_cached_ifinfo($$$$)
 	}
 }
 
-my $np = Nagios::Plugin->new(
+my $np = Nagios::Monitoring::Plugin->new(
 	shortname => 'INTERFACE',
 	usage => "usage: check_interface <options> -H <host_address> -i <interface>\n   use --help for more info",
 	plugin => 'INTERFACE',
@@ -399,28 +407,28 @@ $np->add_arg(
 
 $np->add_arg(
 	spec => 'wpkts|k=s',
-	help => "-k, --wpkts=INTEGER:INTEGER\n   critical threshold for traffic (pps)\n"
+	help => "-k, --wpkts=INTEGER:INTEGER\n   warning threshold for Unicast Packets (pps)\n"
               . " See http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT "
               . "for the threshold format. ",
 );
 
 $np->add_arg(
 	spec => 'cpkts|K=s',
-	help => "-K, --cpkts=INTEGER:INTEGER\n   critical threshold for traffic (pps)\n"
+	help => "-K, --cpkts=INTEGER:INTEGER\n   critical threshold for Unicast Packets (pps)\n"
               . " See http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT "
               . "for the threshold format. ",
 );
 
 $np->add_arg(
 	spec => 'wpctbps|t=s',
-	help => "-t, --wpct=INTEGER:INTEGER\n   critical threshold for link usage (%pps)\n"
+	help => "-t, --wpctbps=INTEGER:INTEGER\n   warning threshold for link usage (%bps)\n"
               . " See http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT "
               . "for the threshold format. ",
 );
 
 $np->add_arg(
 	spec => 'cpctbps|T=s',
-	help => "-T, --cpct=INTEGER:INTEGER\n   critical threshold for link usage (%pps)\n"
+	help => "-T, --cpctbps=INTEGER:INTEGER\n   critical threshold for link usage (%bps)\n"
               . " See http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT "
               . "for the threshold format. ",
 );
@@ -551,7 +559,10 @@ my ($inbps, $outbps, $inpps, $outpps, $inspdpct, $outspdpct);
 if (defined $cached_ifinfo)
 {
 	my $timedelta = $ifinfo->{time} - $cached_ifinfo->{time};
-
+	if ($ifinfo->{ifRealSpeed} <=0) 
+	{
+		$ifinfo->{ifRealSpeed} = 1000000000;
+	}
 	if ($timedelta > 0)
 	{
 		$inbps = ($ifinfo->{ifInOctets} - $cached_ifinfo->{ifInOctets}) * 8 / $timedelta;
@@ -584,10 +595,12 @@ save_cached_ifinfo($np, $np->opts->hostname, $np->opts->interface, $ifinfo);
 if (!$np->opts->noperfdata && (lc $IFSTATE->{ifOperStatus}->{$ifinfo->{ifOperStatus}} eq 'up'))
 {
 	#$np->add_perfdata(label => "bps in", value => int($inbps), min => 0, max => $ifinfo->{ifRealSpeed}) if ($inbps >= 0);
-	$np->add_perfdata(label => "bps in", value => int($inbps)) if ($inbps >= 0);
-	$np->add_perfdata(label => "bps out", value => int($outbps)) if ($outbps >= 0);
-	$np->add_perfdata(label => "pps in", value => int($inpps)) if ($inpps >= 0);
-	$np->add_perfdata(label => "pps out", value => int($outpps)) if ($outpps >= 0);
+	$np->add_perfdata(label => "traffic_in", value => int($inbps), min => 0, max => $ifinfo->{ifRealSpeed}, warning => $np->opts->wbps, critical => $np->opts->cbps);
+	$np->add_perfdata(label => "traffic_out", value => int($outbps), min => 0, max => $ifinfo->{ifRealSpeed}, warning => $np->opts->wbps, critical => $np->opts->cbps);
+	$np->add_perfdata(label => "usage_in", value => sprintf("%.2f", $inspdpct), uom => "%", warning => $np->opts->wpctbps, critical => $np->opts->cpctbps);
+	$np->add_perfdata(label => "usage_out", value => sprintf("%.2f", $outspdpct), uom => "%", warning => $np->opts->wpctbps, critical => $np->opts->cpctbps);
+	$np->add_perfdata(label => "uni_pps_in", value => int($inpps), warning => $np->opts->wpkts, critical => $np->opts->cpkts);
+	$np->add_perfdata(label => "uni_pps_out", value => int($outpps), warning => $np->opts->wpkts, critical => $np->opts->cpkts);
 }
 
 #----------------------------------------
@@ -598,7 +611,7 @@ my $ifspeed = unit_value($ifinfo->{ifRealSpeed}, 'bps');
 $ifspeed =~ s/\.00//;
 
 my $metrics;
-if ($inpps > 0)
+# if ($inpps > 0)
 {
 	$metrics = sprintf("adm %s / lnk %s / %s - in=%s/%s (%.2f%%) out=%s/%s (%.2f%%)",
 		lc $IFSTATE->{ifAdminStatus}->{$ifinfo->{ifAdminStatus}},
@@ -612,14 +625,14 @@ if ($inpps > 0)
 		$outspdpct,
 	);
 }
-else
-{
-	$metrics = sprintf("adm %s / lnk %s / %s",
-		lc $IFSTATE->{ifAdminStatus}->{$ifinfo->{ifAdminStatus}},
-		lc $IFSTATE->{ifOperStatus}->{$ifinfo->{ifOperStatus}},
-		lc $ifspeed,
-	);
-}
+# else
+# {
+# 	$metrics = sprintf("adm %s / lnk %s / %s",
+# 		lc $IFSTATE->{ifAdminStatus}->{$ifinfo->{ifAdminStatus}},
+# 		lc $IFSTATE->{ifOperStatus}->{$ifinfo->{ifOperStatus}},
+# 		lc $ifspeed,
+# 	);
+# }
 
 #----------------------------------------
 # Status Checks
@@ -627,38 +640,41 @@ else
 
 my $code;
 
-$np->add_message(OK, '');
+my $prefix = " $ifinfo->{ifDescr} (alias: $ifinfo->{ifAlias}) -";
 
-if ($inpps > 0)
+$np->add_message(OK,'');
+
+# if ($inpps > 0)
 {
 	if (($code = $np->check_threshold(check => $inspdpct, warning => $np->opts->wpctbps, critical => $np->opts->cpctbps)) != OK)
 	{
-		$np->add_message($code, '[%BPS IN]');
+		$np->add_message($code, $prefix . ' [%BPS IN]');
 	}
 
 	if (($code = $np->check_threshold(check => $outspdpct, warning => $np->opts->wpctbps, critical => $np->opts->cpctbps)) != OK)
 	{
-		$np->add_message($code, '[%BPS OUT]');
+		$np->add_message($code, $prefix . ' [%BPS OUT]');
 	}
-
+	
 	if (($code = $np->check_threshold(check => $inbps, warning => $np->opts->wbps, critical => $np->opts->cbps)) != OK)
 	{
-		$np->add_message($code, '[BPS IN]');
+		
+		$np->add_message($code, ' [BPS IN]');
 	}
 
 	if (($code = $np->check_threshold(check => $outbps, warning => $np->opts->wbps, critical => $np->opts->cbps)) != OK)
 	{
-		$np->add_message($code, '[BPS OUT]');
+		$np->add_message($code, ' [BPS OUT]');
 	}
 
 	if (($code = $np->check_threshold(check => $inpps, warning => $np->opts->wpkts, critical => $np->opts->cpkts)) != OK)
 	{
-		$np->add_message($code, '[PPS IN]');
+		$np->add_message($code, $prefix .  ' [PPS IN]');
 	}
 
 	if (($code = $np->check_threshold(check => $outpps, warning => $np->opts->wpkts, critical => $np->opts->cpkts)) != OK)
 	{
-		$np->add_message($code, '[PPS OUT]');
+		$np->add_message($code, $prefix .  ' [PPS OUT]');
 	}
 }
 
@@ -667,17 +683,17 @@ if (($np->opts->interfacestatus == 1 && $ifinfo->{ifAdminStatus} == 1 && $ifinfo
 {
 	if ($np->opts->warnifcritical)
 	{
-		$np->add_message(WARNING, '[IF DOWN]');
+		$np->add_message(WARNING, $prefix .  '[IF DOWN]');
 	}
 	else
 	{
-		$np->add_message(CRITICAL, '[IF DOWN]');
+		$np->add_message(CRITICAL, $prefix .  '[IF DOWN]');
 	}
 }
 
 my ($exit_code, $exit_message) = $np->check_messages();
 
-$exit_message = join(' ', ($exit_message, $metrics));
+$exit_message = $prefix . join(' ', ($exit_message, $metrics));
 $exit_message =~ s/^ *//;
 
 $np->nagios_exit($exit_code, $exit_message);
