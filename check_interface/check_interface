@@ -605,10 +605,10 @@ save_cached_ifinfo($np, $np->opts->hostname, $np->opts->interface, $ifinfo);
 
 if (!$np->opts->noperfdata && (lc $IFSTATE->{ifOperStatus}->{$ifinfo->{ifOperStatus}} eq 'up'))
 {
-	$np->add_perfdata(label => "traffic_in", value => int($inbps), min => 0, max => $ifinfo->{ifRealSpeed}, warning => $np->opts->wbps, critical => $np->opts->cbps);
-	$np->add_perfdata(label => "traffic_out", value => int($outbps), min => 0, max => $ifinfo->{ifRealSpeed}, warning => $np->opts->wbps, critical => $np->opts->cbps);
 	$np->add_perfdata(label => "usage_in", value => sprintf("%.2f", $inspdpct), uom => "%", warning => $np->opts->wpctbps, critical => $np->opts->cpctbps);
 	$np->add_perfdata(label => "usage_out", value => sprintf("%.2f", $outspdpct), uom => "%", warning => $np->opts->wpctbps, critical => $np->opts->cpctbps);
+	$np->add_perfdata(label => "traffic_in", value => int($inbps), min => 0, max => $ifinfo->{ifRealSpeed}, warning => $np->opts->wbps, critical => $np->opts->cbps);
+	$np->add_perfdata(label => "traffic_out", value => int($outbps), min => 0, max => $ifinfo->{ifRealSpeed}, warning => $np->opts->wbps, critical => $np->opts->cbps);
 	$np->add_perfdata(label => "uni_pps_in", value => int($inpps), warning => $np->opts->wpkts, critical => $np->opts->cpkts);
 	$np->add_perfdata(label => "uni_pps_out", value => int($outpps), warning => $np->opts->wpkts, critical => $np->opts->cpkts);
 }
