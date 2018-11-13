@@ -433,6 +433,13 @@ $np->add_arg(
               . "for the threshold format. ",
 );
 
+# manual interface speed arg
+$np->add_arg(
+	spec => 'ifspeed=i',
+	help => "--ifspeed=INTEGER\n   Manual interface speed (bps) \n",
+);
+
+
 $np->getopts();
 
 # Safety Net
@@ -563,6 +570,10 @@ if (defined $cached_ifinfo)
 	{
 		$ifinfo->{ifRealSpeed} = 1000000000;
 	}
+	if (defined $np->opts->ifspeed)
+	{
+		$ifinfo->{ifRealSpeed} = $np->opts->ifspeed;
+	}
 	if ($timedelta > 0)
 	{
 		$inbps = ($ifinfo->{ifInOctets} - $cached_ifinfo->{ifInOctets}) * 8 / $timedelta;
@@ -594,7 +605,6 @@ save_cached_ifinfo($np, $np->opts->hostname, $np->opts->interface, $ifinfo);
 
 if (!$np->opts->noperfdata && (lc $IFSTATE->{ifOperStatus}->{$ifinfo->{ifOperStatus}} eq 'up'))
 {
-	#$np->add_perfdata(label => "bps in", value => int($inbps), min => 0, max => $ifinfo->{ifRealSpeed}) if ($inbps >= 0);
 	$np->add_perfdata(label => "traffic_in", value => int($inbps), min => 0, max => $ifinfo->{ifRealSpeed}, warning => $np->opts->wbps, critical => $np->opts->cbps);
 	$np->add_perfdata(label => "traffic_out", value => int($outbps), min => 0, max => $ifinfo->{ifRealSpeed}, warning => $np->opts->wbps, critical => $np->opts->cbps);
 	$np->add_perfdata(label => "usage_in", value => sprintf("%.2f", $inspdpct), uom => "%", warning => $np->opts->wpctbps, critical => $np->opts->cpctbps);
