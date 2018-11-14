@@ -654,7 +654,7 @@ my $prefix = " $ifinfo->{ifDescr} (alias: $ifinfo->{ifAlias}) -";
 
 $np->add_message(OK,'');
 
-# if ($inpps > 0)
+if ($inbps >=0 && $outbps>=0)
 {
 	if (($code = $np->check_threshold(check => $inspdpct, warning => $np->opts->wpctbps, critical => $np->opts->cpctbps)) != OK)
 	{
