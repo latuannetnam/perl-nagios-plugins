@@ -603,7 +603,7 @@ save_cached_ifinfo($np, $np->opts->hostname, $np->opts->interface, $ifinfo);
 # Performance Data
 #----------------------------------------
 
-if (!$np->opts->noperfdata && (lc $IFSTATE->{ifOperStatus}->{$ifinfo->{ifOperStatus}} eq 'up'))
+if (!$np->opts->noperfdata && (lc $IFSTATE->{ifOperStatus}->{$ifinfo->{ifOperStatus}} eq 'up') && ($inbps >=0 && $outbps>=0))
 {
 	$np->add_perfdata(label => "usage_in", value => sprintf("%.2f", $inspdpct), uom => "%", warning => $np->opts->wpctbps, critical => $np->opts->cpctbps);
 	$np->add_perfdata(label => "usage_out", value => sprintf("%.2f", $outspdpct), uom => "%", warning => $np->opts->wpctbps, critical => $np->opts->cpctbps);
@@ -621,7 +621,7 @@ my $ifspeed = unit_value($ifinfo->{ifRealSpeed}, 'bps');
 $ifspeed =~ s/\.00//;
 
 my $metrics;
-# if ($inpps > 0)
+if ($inbps >=0 && $outbps>=0)
 {
 	$metrics = sprintf("adm %s / lnk %s / %s - in=%s/%s (%.2f%%) out=%s/%s (%.2f%%)",
 		lc $IFSTATE->{ifAdminStatus}->{$ifinfo->{ifAdminStatus}},
@@ -635,14 +635,14 @@ my $metrics;
 		$outspdpct,
 	);
 }
-# else
-# {
-# 	$metrics = sprintf("adm %s / lnk %s / %s",
-# 		lc $IFSTATE->{ifAdminStatus}->{$ifinfo->{ifAdminStatus}},
-# 		lc $IFSTATE->{ifOperStatus}->{$ifinfo->{ifOperStatus}},
-# 		lc $ifspeed,
-# 	);
-# }
+else
+{
+	$metrics = sprintf("adm %s / lnk %s / %s",
+		lc $IFSTATE->{ifAdminStatus}->{$ifinfo->{ifAdminStatus}},
+		lc $IFSTATE->{ifOperStatus}->{$ifinfo->{ifOperStatus}},
+		lc $ifspeed,
+	);
+}
 
 #----------------------------------------
 # Status Checks
