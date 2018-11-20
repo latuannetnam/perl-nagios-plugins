@@ -97,12 +97,17 @@ sub get_active_users($$)
 			"$OIDS->{casnActiveTableEntries}",
 		]
 	);
-	$snmp_session->close();
 
+	my $results = $snmp_session->get_table(
+                       -baseoid  => $OIDS_CONNECT_HOST->{ipNetToMediaNetAddress},
+                    );
+	$snmp_session->close();
+    
 	$np->nagios_die('get_active_users: ' . $snmp_session->error()) if (!defined $result);
 
 	my 	$info = $result->{"$OIDS->{casnActiveTableEntries}"};
-	# print Data::Dumper->new([$result])->Terse(1)->Purity(1)->Dump();
+	my  $connect_hosts = keys %$results;
+	# print Data::Dumper->new([$results])->Terse(1)->Purity(1)->Dump();
 	
 	# print("active users:$info");
 	#----------------------------------------
@@ -111,13 +116,14 @@ sub get_active_users($$)
 	if (!$np->opts->noperfdata)
 	{
 		$np->add_perfdata(label => "active_users", value => $info, warning => $np->opts->warn, critical => $np->opts->critical);
+		$np->add_perfdata(label => "connect_hosts", value => $connect_hosts);
 	}
 
 	#----------------------------------------
 	# Metrics Summary
 	#----------------------------------------
 	my $metrics;
-	$metrics = "active users: $info";
+	$metrics = "active users: $info - connect hosts:$connect_hosts";
 
 	#----------------------------------------
 	# Status Checks
@@ -423,7 +429,6 @@ if (defined $np->opts->modes)
 	print "active-users: check active hotspot users \n";
 	print "memory: check memory \n";
 	print "health: check health (temperature, power ..) \n";
-	print "connect-hosts: check connecting hosts\n";
 	$np->nagios_exit(OK,'');
 }
 
