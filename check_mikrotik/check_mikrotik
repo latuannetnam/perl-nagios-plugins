@@ -45,6 +45,9 @@ my $OIDS_MEMORY = {
 	hrStorageUsed => '.1.3.6.1.2.1.25.2.3.1.6.65536',
 };
 
+my $OIDS_CONNECT_HOST = {
+	ipNetToMediaNetAddress => '.1.3.6.1.2.1.4.22.1.3',
+};
 
 
 sub unit_value
@@ -420,6 +423,7 @@ if (defined $np->opts->modes)
 	print "active-users: check active hotspot users \n";
 	print "memory: check memory \n";
 	print "health: check health (temperature, power ..) \n";
+	print "connect-hosts: check connecting hosts\n";
 	$np->nagios_exit(OK,'');
 }
 
