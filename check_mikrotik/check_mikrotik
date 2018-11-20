@@ -144,7 +144,7 @@ sub get_health($$)
 {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
-	my @oids = values $OIDS;
+	my @oids = values %$OIDS;
 	my $result = $snmp_session->get_request(-varbindlist => [@oids]);
 	$snmp_session->close();
 	$np->nagios_die('get_health: ' . $snmp_session->error()) if (!defined $result);
@@ -209,7 +209,7 @@ sub get_memory($$)
 {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
-	my @oids = values $OIDS;
+	my @oids = values %$OIDS;
 	my $result = $snmp_session->get_request(-varbindlist => [@oids]);
 	$snmp_session->close();
 	$np->nagios_die('get_memory: ' . $snmp_session->error()) if (!defined $result);
