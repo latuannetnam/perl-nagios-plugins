@@ -87,6 +87,43 @@ sub get_active_users($$)
 
 	my 	$info = $result->{"$OIDS->{casnActiveTableEntries}"};
 	# print Data::Dumper->new([$result])->Terse(1)->Purity(1)->Dump();
+	$snmp_session->close();
+	# print("active users:$info");
+	#----------------------------------------
+	# Performance Data
+	#----------------------------------------
+	if (!$np->opts->noperfdata)
+	{
+		$np->add_perfdata(label => "active_users", value => $info, warning => $np->opts->warn, critical => $np->opts->critical);
+	}
+
+	#----------------------------------------
+	# Metrics Summary
+	#----------------------------------------
+	my $metrics;
+	$metrics = "active users: $info";
+
+	#----------------------------------------
+	# Status Checks
+	#----------------------------------------
+
+	my $code;
+
+	my $prefix = " ";
+
+	$np->add_message(OK,'');
+
+	if (($code = $np->check_threshold(check => $info, warning => $np->opts->warn, critical => $np->opts->critical)) != OK)
+		{
+			$np->add_message($code, $prefix . ' [USERS]');
+		}
+
+	my ($exit_code, $exit_message) = $np->check_messages();
+
+	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
+	$exit_message =~ s/^ *//;
+
+	$np->nagios_exit($exit_code, $exit_message);
 	return $info;
 }
 
@@ -312,52 +349,14 @@ if (! -w $np->opts->datadir)
 
 
 
-my $info;
+
 #----------------------------------------
 # Active users mode
 #----------------------------------------
 
 if ($np->opts->mode eq "active-users")
 {
-	$info = get_active_users($np, $snmp_session);
-	$snmp_session->close();
-	# print("active users:$info");
-	#----------------------------------------
-	# Performance Data
-	#----------------------------------------
-	if (!$np->opts->noperfdata)
-	{
-		$np->add_perfdata(label => "active_uses", value => $info, warning => $np->opts->warn, critical => $np->opts->critical);
-	}
-
-	#----------------------------------------
-	# Metrics Summary
-	#----------------------------------------
-	my $metrics;
-	$metrics = "active users: $info";
-
-
-	#----------------------------------------
-	# Status Checks
-	#----------------------------------------
-
-	my $code;
-
-	my $prefix = " ";
-
-	$np->add_message(OK,'');
-
-	if (($code = $np->check_threshold(check => $info, warning => $np->opts->warn, critical => $np->opts->critical)) != OK)
-		{
-			$np->add_message($code, $prefix . ' [USERS]');
-		}
-
-	my ($exit_code, $exit_message) = $np->check_messages();
-
-	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
-	$exit_message =~ s/^ *//;
-
-	$np->nagios_exit($exit_code, $exit_message);
+	my $info = get_active_users($np, $snmp_session);
 }
 else
 {
