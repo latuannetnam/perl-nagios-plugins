@@ -239,7 +239,7 @@ sub get_memory($$)
 	# Metrics Summary
 	#----------------------------------------
 	my $metrics;
-	$metrics = sprintf("memory used: $info->{hrStorageUsed} (%.2f %)", $usage);
+	$metrics = sprintf("memory used: $info->{hrStorageUsed} (%.2f %%)", $usage);
 
 	#----------------------------------------
 	# Status Checks
