@@ -168,25 +168,6 @@ sub get_ifinfo($$$)
 	}
 
 	my $result = $snmp_session->get_request(-varbindlist => [@oids]);
-# 	my $result = $snmp_session->get_request(
-# 		-varbindlist => [
-# 			"$OIDS->{ifDescr}.$ifid",
-# 			"$OIDS->{ifSpeed}.$ifid",
-# 			"$OIDS->{ifHighSpeed}.$ifid",
-# 			"$OIDS->{ifAdminStatus}.$ifid",
-# 			"$OIDS->{ifOperStatus}.$ifid",
-# 			"$OIDS->{ifInOctets}.$ifid",
-# 			"$OIDS->{ifInUcastPkts}.$ifid",
-# #			"$OIDS->{ifInDiscards}.$ifid",
-# #			"$OIDS->{ifInErrors}.$ifid",
-# 			"$OIDS->{ifOutOctets}.$ifid",
-# 			"$OIDS->{ifOutUcastPkts}.$ifid",
-# #			"$OIDS->{ifOutDiscards}.$ifid",
-# #			"$OIDS->{ifOutErrors}.$ifid",
-# 			"$OIDS->{ifAlias}.$ifid",
-# 		]
-# 	);
-
 	$np->nagios_die('get_ifinfo: ' . $snmp_session->error()) if (!defined $result);
 
 	my $ifinfo = {};
