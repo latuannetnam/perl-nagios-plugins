@@ -315,6 +315,7 @@ sub get_interface_detail($$$$)
 	# Do the Math
 	#----------------------------------------
 	my ($inHslCrcErrors, $outHslCrcErrors);
+	$inHslCrcErrors = $outHslCrcErrors = 0;
 	if (defined $cached_ifinfo)
 	{
 		my $timedelta = $ifinfo->{time} - $cached_ifinfo->{time};
@@ -323,10 +324,6 @@ sub get_interface_detail($$$$)
 		
 			$inHslCrcErrors = ($ifinfo->{ifJnxInHslCrcErrors} - $cached_ifinfo->{ifJnxInHslCrcErrors}) / $timedelta;
 			$outHslCrcErrors = ($ifinfo->{ifJnxOutHslCrcErrors} - $cached_ifinfo->{ifJnxOutHslCrcErrors}) / $timedelta;
-		}
-		else
-		{
-			$inHslCrcErrors = $outHslCrcErrors = 0;
 		}
 	}
 	
