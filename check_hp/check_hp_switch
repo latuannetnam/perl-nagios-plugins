@@ -165,7 +165,7 @@ sub watt2dBm($)
 {
 	my $power_in = shift or die;
 	my $power_out = 10 * log10($power_in);
-	print "Power out: $power_out\n";
+	# print "Power out: $power_out\n";
 	return $power_out;
 }
 
@@ -199,7 +199,7 @@ sub get_optics($$$$)
 			# convert from 1/1000 degree to degree
 			$ifinfo->{$item} = $ifinfo->{$item} * $TEMPERATURE_MUL;
 		}
-		elsif ($item =~ /hpicfXcvrPwrOut/ || $item =~ / hpicfXcvrRcvPwr/) {
+		elsif ($item =~ /hpicfXcvrPwrOut/ || $item =~ /hpicfXcvrRcvPwr/) {
 			# convert from 1/10 microWatt to milliWatt
 			$ifinfo->{$item} = watt2dBm($ifinfo->{$item} * $POWER_WATT_MUL);
 		}
