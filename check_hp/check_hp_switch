@@ -163,7 +163,7 @@ sub log10($) {
 # Convert power from mW to dBm
 sub watt2dBm($)
 {
-	my $power_in = shift or die;
+	my $power_in = shift or $np->nagios_die("No power_in");;
 	my $power_out = 10 * log10($power_in);
 	# print "Power out: $power_out\n";
 	return $power_out;
