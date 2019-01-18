@@ -161,8 +161,9 @@ sub log10($) {
     }
 
 # Convert power from mW to dBm
-sub watt2dBm($)
+sub watt2dBm($$)
 {
+	my $np = shift or die;
 	my $power_in = shift or $np->nagios_die("No power_in");;
 	my $power_out = 10 * log10($power_in);
 	# print "Power out: $power_out\n";
@@ -201,7 +202,7 @@ sub get_optics($$$$)
 		}
 		elsif ($item =~ /hpicfXcvrPwrOut/ || $item =~ /hpicfXcvrRcvPwr/) {
 			# convert from 1/10 microWatt to milliWatt
-			$ifinfo->{$item} = watt2dBm($ifinfo->{$item} * $POWER_WATT_MUL);
+			$ifinfo->{$item} = watt2dBm($np, $ifinfo->{$item} * $POWER_WATT_MUL);
 		}
 
 
