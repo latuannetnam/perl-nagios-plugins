@@ -1,0 +1,683 @@
+#!/usr/bin/perl
+#
+#    check_dom nagios plugin: Monitor Optical DOM (Digital Optical Monitoring)
+#    Copyright (C) 2019 Le Anh Tuan (tuan.la@netnam.vn/latuannetnam@gmail.com)
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+use strict;
+use warnings;
+use 5.008;
+use Nagios::Monitoring::Plugin;
+use Net::SNMP;
+use Data::Dumper;
+
+my $STATEDIR = '/var/tmp';
+my $POWER_MUL = 0.001;
+my $POWER_WATT_MUL = 0.0001;
+my $CURRENT_MUL =  0.001;
+my $TEMPERATURE_MUL = 0.001;
+my $OIDS_INTERFACE = {
+	ifDescr => '.1.3.6.1.2.1.2.2.1.2',
+};
+
+my $OIDS_OPTICS = {
+	hpicfXcvrBias => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.13',
+	hpicfXcvrBiasHiAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.26',
+	hpicfXcvrBiasLoAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.27',
+	hpicfXcvrBiasHiWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.28',
+	hpicfXcvrBiasLoWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.29',
+	hpicfXcvrRxPower => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.15',
+	hpicfXcvrRcvPwrHiAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.34',
+	hpicfXcvrRcvPwrLoAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.35',
+	hpicfXcvrRcvPwrHiWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.36',
+	hpicfXcvrRcvPwrLoWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.37',
+	hpicfXcvrTxPower => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.14',
+ 	hpicfXcvrPwrOutHiAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.30',
+	hpicfXcvrPwrOutLoAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.31',
+	hpicfXcvrPwrOutHiWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.32',
+	hpicfXcvrPwrOutLoWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.33',
+	hpicfXcvrTemp => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.11',
+	hpicfXcvrTempHiAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.18',
+	hpicfXcvrTempLoAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.19',
+	hpicfXcvrTempHiWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.20',
+	hpicfXcvrTempLoWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.21',
+};	
+
+sub compute_realspeed
+{
+	my $ifinfo = shift;
+
+	if ($ifinfo->{ifSpeed} == 4294967295)
+	{
+		return $ifinfo->{ifHighSpeed} * 1000000;
+	}
+
+	return $ifinfo->{ifSpeed};
+}
+
+sub sanitize_fname($)
+{
+	my $name = shift;
+	$name =~ s/[^0-9a-z_-]/_/gi;
+	return $name;
+}
+
+sub get_ifid($$$)
+{
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	my $ifdescr = shift or die;
+
+	my $result = $snmp_session->get_table(-baseoid => $OIDS_INTERFACE->{ifDescr});
+	$np->nagios_die('get_ifid: ' . $snmp_session->error()) if !defined $result;
+
+	foreach my $ifid (keys %$result)
+	{
+		if ($result->{$ifid} eq $ifdescr)
+		{
+			$ifid =~ s/$OIDS_INTERFACE->{ifDescr}\.//;
+			return $ifid;
+		}
+	}
+
+	return undef;
+}
+
+sub get_cached_ifinfo($$$)
+{
+	my $np = shift or die;
+	my $hostname = shift or die;
+	my $ifdescr = shift or die;
+	my $fd;
+
+	my $datafile = $np->opts->datadir . '/check_dom/' . $hostname . '/' . sanitize_fname($ifdescr) . '.dat';
+	
+	return undef if (!-e $datafile);
+
+	if (!open($fd, '<', $datafile))
+	{
+		$np->nagios_die("unable to open datafile '$datafile': $!");
+	}
+	read($fd, my $content, 8192);
+	close($fd);
+
+	my $data = eval($content);
+	$np->nagios_die("invalid data in datafile '$datafile': $@") if $@;
+	return $data;
+
+	return undef;
+}
+
+sub save_cached_ifinfo($$$$)
+{
+	my $np = shift or die;
+	my $hostname = shift or die;
+	my $ifdescr = shift or die;
+	my $ifinfo = shift or die;
+	my $fd;
+
+	if (! -d ($np->opts->datadir . '/check_dom/' . $hostname))
+	{
+		if (! -d ($np->opts->datadir . '/check_dom'))
+		{
+			mkdir $np->opts->datadir . '/check_dom'
+				or $np->nagios_die($!);
+		}
+		mkdir $np->opts->datadir . '/check_dom/' . $hostname
+			or $np->nagios_die($!);
+	}
+
+	my $datafile = $np->opts->datadir . '/check_dom/' . $hostname . '/' . sanitize_fname($ifdescr) . '.dat';
+	
+	if (!open($fd, '>', $datafile . '.new'))
+	{
+		$np->nagios_die("unable to open datafile '$datafile.new': $!");
+	}
+
+	print $fd Data::Dumper->new([$ifinfo])->Terse(1)->Purity(1)->Dump();
+	close($fd);
+	if (!rename($datafile . '.new', $datafile))
+	{
+		$np->nagios_die("unable to rename datafile '$datafile.new' to '$datafile': $!");
+	}
+}
+
+sub log10($) {
+        my $n = shift;
+        return log($n)/log(10);
+    }
+
+# Convert power from mW to dBm
+sub watt2dBm($$)
+{
+	my $np = shift or die;
+	my $power_in = shift or $np->nagios_die("No power_in");;
+	my $power_out = 10 * log10($power_in);
+	# print "Power out: $power_out\n";
+	return $power_out;
+}
+
+sub get_optics($$$$)
+{
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	my $ifid = shift or die;
+	my $oids = shift or die;
+	my @oids_list = ();
+	foreach my $item (keys %$oids)
+	{
+		push @oids_list, "$oids->{$item}.$ifid";
+	}
+	my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
+	$snmp_session->close();
+	$np->nagios_die('get_optics: ' . $snmp_session->error()) if (!defined $result);
+	my $ifinfo = {};
+
+	foreach my $item (keys %$oids)
+	{
+		$ifinfo->{$item} = $result->{"$oids->{$item}.$ifid"};
+		if ($item =~ /Power/)
+		{
+			$ifinfo->{$item} = $ifinfo->{$item} * $POWER_MUL;
+		}
+		elsif ($item =~ /Bias/) {
+			$ifinfo->{$item} = $ifinfo->{$item} * $CURRENT_MUL;
+		}
+		elsif ($item =~ /Temp/) {
+			# convert from 1/1000 degree to degree
+			$ifinfo->{$item} = $ifinfo->{$item} * $TEMPERATURE_MUL;
+		}
+		elsif ($item =~ /hpicfXcvrPwrOut/ || $item =~ /hpicfXcvrRcvPwr/) {
+			# convert from 1/10 microWatt to milliWatt
+			$ifinfo->{$item} = watt2dBm($np, $ifinfo->{$item} * $POWER_WATT_MUL);
+		}
+
+
+	}
+	# print Data::Dumper->new([$ifinfo])->Terse(1)->Purity(1)->Dump();
+	#----------------------------------------
+	# Performance Data
+	#----------------------------------------
+	# print "warning: $ifinfo->{jnxDomCurrentRxLaserPowerLowWarningThreshold}:$ifinfo->{jnxDomCurrentRxLaserPowerHighWarningThreshold} \n";
+	# $ifinfo->{jnxDomCurrentRxLaserPower} = -17.5;
+	# $ifinfo->{jnxDomCurrentTxLaserOutputPower} = -9; 
+	# $ifinfo->{jnxDomCurrentModuleTemperature} = 90;
+	# $ifinfo->{jnxDomCurrentTxLaserBiasCurrent} = 0.5;
+	if (!$np->opts->noperfdata)
+	{
+		$np->add_perfdata(label => "bias_current", 
+				value => $ifinfo->{hpicfXcvrBias}, 
+				warning => sprintf("%.2f:%.2f", 
+								   $ifinfo->{hpicfXcvrBiasLoWarn},
+								   $ifinfo->{hpicfXcvrBiasHiWarn}), 
+				critical => sprintf("%.2f:%.2f",
+								   $ifinfo->{hpicfXcvrBiasLoAlarm},
+								   $ifinfo->{hpicfXcvrBiasHiAlarm})
+				);
+
+		$np->add_perfdata(label => "rx_power", 
+				value => $ifinfo->{hpicfXcvrRxPower}, 
+				warning => sprintf("%.2f:%.2f", 
+								   $ifinfo->{hpicfXcvrRcvPwrLoWarn},
+								   $ifinfo->{hpicfXcvrRcvPwrHiWarn}), 
+				critical => sprintf("%.2f:%.2f",
+								   $ifinfo->{hpicfXcvrRcvPwrLoAlarm},
+								   $ifinfo->{hpicfXcvrRcvPwrHiAlarm})
+				);
+		
+		$np->add_perfdata(label => "output_power", 
+				value => $ifinfo->{hpicfXcvrTxPower}, 
+				warning => sprintf("%.2f:%.2f", 
+								   $ifinfo->{hpicfXcvrPwrOutLoWarn},
+								   $ifinfo->{hpicfXcvrPwrOutHiWarn}), 
+				critical => sprintf("%.2f:%.2f",
+								   $ifinfo->{hpicfXcvrPwrOutLoAlarm},
+								   $ifinfo->{hpicfXcvrPwrOutHiAlarm})
+				);
+		
+		$np->add_perfdata(label => "temperature", 
+				value => $ifinfo->{hpicfXcvrTemp}, 
+				warning => sprintf("%.2f:%.2f", 
+								   $ifinfo->{hpicfXcvrTempLoWarn},
+								   $ifinfo->{hpicfXcvrTempHiWarn}), 
+				critical => sprintf("%.2f:%.2f",
+								   $ifinfo->{hpicfXcvrTempLoAlarm},
+								   $ifinfo->{hpicfXcvrTempHiAlarm})
+				);
+
+	}	
+
+	#----------------------------------------
+	# Metrics Summary
+	#----------------------------------------
+	my $metrics = sprintf("Laser Bias current: %s mA /RX power: %s dBm / Output power: %s dBm / Temperature: %s degrees C",
+				$ifinfo->{hpicfXcvrBias},
+				$ifinfo->{hpicfXcvrRxPower},
+				$ifinfo->{hpicfXcvrTxPower},
+				$ifinfo->{hpicfXcvrTemp},
+	);
+	#----------------------------------------
+	# Status Checks
+	#----------------------------------------
+
+	my $code;
+
+	my $prefix = " ";
+
+	$np->add_message(OK,'');
+	if (($code = $np->check_threshold(check => $ifinfo->{hpicfXcvrBias}, 
+			warning => sprintf("%.2f:%.2f", 
+								   $ifinfo->{hpicfXcvrBiasLoWarn},
+								   $ifinfo->{hpicfXcvrBiasHiWarn}), 
+			critical => sprintf("%.2f:%.2f",
+								$ifinfo->{hpicfXcvrBiasLoAlarm},
+								$ifinfo->{hpicfXcvrBiasHiAlarm}))) != OK)
+		{
+			$np->add_message($code, $prefix . '[BIAS CURRENT]');
+		}
+
+	if (($code = $np->check_threshold(check => $ifinfo->{hpicfXcvrRxPower}, 
+			warning => sprintf("%.2f:%.2f", 
+								   $ifinfo->{hpicfXcvrRcvPwrLoWarn},
+								   $ifinfo->{hpicfXcvrRcvPwrHiWarn}), 
+			critical => sprintf("%.2f:%.2f",
+								$ifinfo->{hpicfXcvrRcvPwrLoAlarm},
+								$ifinfo->{hpicfXcvrRcvPwrHiAlarm}))) != OK)
+		{
+			$np->add_message($code, $prefix . '[RX POWER]');
+		}
+	
+	if (($code = $np->check_threshold(check => $ifinfo->{hpicfXcvrTxPower}, 
+			warning => sprintf("%.2f:%.2f", 
+								   $ifinfo->{hpicfXcvrPwrOutLoWarn},
+								   $ifinfo->{hpicfXcvrPwrOutHiWarn}), 
+			critical => sprintf("%.2f:%.2f",
+								$ifinfo->{hpicfXcvrPwrOutLoAlarm},
+								$ifinfo->{hpicfXcvrPwrOutHiAlarm}))) != OK)
+		{
+			$np->add_message($code, $prefix  . '[OUTPUT POWER]');
+		}		
+	
+	if (($code = $np->check_threshold(check => $ifinfo->{hpicfXcvrTemp}, 
+			warning => sprintf("%.2f:%.2f", 
+								   $ifinfo->{hpicfXcvrTempLoWarn},
+								   $ifinfo->{hpicfXcvrTempHiWarn}), 
+			critical => sprintf("%.2f:%.2f",
+								$ifinfo->{hpicfXcvrTempLoAlarm},
+								$ifinfo->{hpicfXcvrTempHiAlarm}))) != OK)
+		{
+			$np->add_message($code, $prefix  . '[Temperature]');
+		}			
+
+	my ($exit_code, $exit_message) = $np->check_messages();
+
+	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
+	$exit_message =~ s/^ *//;
+
+	$np->nagios_exit($exit_code, $exit_message);
+}
+
+sub get_interface_detail($$$$)
+{
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	my $ifid = shift or die;
+	my $oids = shift or die;
+	my @oids_list = ();
+	foreach my $item (keys %$oids)
+	{
+		push @oids_list, "$oids->{$item}.$ifid";
+	}
+	my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
+	$snmp_session->close();
+	$np->nagios_die('get_optics: ' . $snmp_session->error()) if (!defined $result);
+	my $ifinfo = {};
+
+	foreach my $item (keys %$oids)
+	{
+		$ifinfo->{$item} = $result->{"$oids->{$item}.$ifid"};
+	}
+	$ifinfo->{time} = time;
+	$ifinfo->{ifId} = $ifid;
+	
+	#----------------------------------------
+	# Get Cached Interface Info
+	#----------------------------------------
+
+	my $cached_ifinfo = get_cached_ifinfo($np, $np->opts->hostname, $np->opts->interface);
+	
+	#----------------------------------------
+	# Do the Math
+	#----------------------------------------
+	my ($inHslCrcErrors, $outHslCrcErrors);
+	$inHslCrcErrors = $outHslCrcErrors = 0;
+	if (defined $cached_ifinfo)
+	{
+		my $timedelta = $ifinfo->{time} - $cached_ifinfo->{time};
+		if ($timedelta > 0)
+		{
+		
+			$inHslCrcErrors = ($ifinfo->{ifJnxInHslCrcErrors} - $cached_ifinfo->{ifJnxInHslCrcErrors}) / $timedelta;
+			$outHslCrcErrors = ($ifinfo->{ifJnxOutHslCrcErrors} - $cached_ifinfo->{ifJnxOutHslCrcErrors}) / $timedelta;
+		}
+	}
+	
+	save_cached_ifinfo($np, $np->opts->hostname, $np->opts->interface, $ifinfo);
+	# print Data::Dumper->new([$ifinfo])->Terse(1)->Purity(1)->Dump();
+	#----------------------------------------
+	# Performance Data
+	#----------------------------------------
+	if (!$np->opts->noperfdata)
+	{
+		$np->add_perfdata(label => "in_hls_crc", 
+				value => $inHslCrcErrors, 
+				warning => $np->opts->whlscrc, 
+				critical => $np->opts->chlscrc
+				);
+		$np->add_perfdata(label => "out_hls_crc", 
+				value => $outHslCrcErrors, 
+				warning => $np->opts->whlscrc, 
+				critical => $np->opts->chlscrc
+				);		
+	}			
+	
+	#----------------------------------------
+	# Metrics Summary
+	#----------------------------------------
+	my $metrics = sprintf("In HLS CRC: %s ops / Out HLS CRC: %s ops",
+				  $inHslCrcErrors,
+				  $outHslCrcErrors, 
+				
+	);
+	#----------------------------------------
+	# Status Checks
+	#----------------------------------------
+
+	my $code;
+	my $prefix = " ";
+	$np->add_message(OK,'');
+	if (($code = $np->check_threshold(check => $inHslCrcErrors, 
+			warning => $np->opts->whlscrc, 
+			critical => $np->opts->chlscrc)) != OK)
+		{
+			$np->add_message($code, $prefix . '[IN HLS CRC]');
+		}
+
+	if (($code = $np->check_threshold(check => $outHslCrcErrors, 
+			warning => $np->opts->whlscrc, 
+			critical => $np->opts->chlscrc)) != OK)
+		{
+			$np->add_message($code, $prefix . '[OUT HLS CRC]');
+		}	
+
+	
+	my ($exit_code, $exit_message) = $np->check_messages();
+
+	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
+	$exit_message =~ s/^ *//;
+	$np->nagios_exit($exit_code, $exit_message);
+
+}	
+#------------ Main program ------------------------
+my $np = Nagios::Monitoring::Plugin->new(
+	shortname => 'OPTICAL-DOM',
+	usage => "usage: check_dom <options> -H <host_address> -i interface -m <mode>\n   use --help for more info",
+	plugin => 'OPTICAL-DOM',
+	version => '1.0'
+);
+
+#----------------------------------------
+# Option Parsing
+#----------------------------------------
+
+$np->add_arg(
+	spec => 'hostname|H=s',
+	help => "-H, --hostname=<host_address>\n   Hostname to check",
+	required => 1,
+);
+
+$np->add_arg(
+	spec => 'interface|i=s',
+	help => "-i <interface_name>\n   Interface to check (ex: GigabitEthernet0/1)",
+	required => 1
+);
+
+$np->add_arg(
+	spec => 'port|p=s',
+	help => "-p, --port=<snmp_port>\n   SNMP port (default: 161)",
+	default => 161,
+);
+
+# IPv4/IPv6
+
+$np->add_arg(
+	spec => 'ipv4|4',
+	help => "-4\n   use IPv4 (default)",
+);
+
+$np->add_arg(
+	spec => 'ipv6|6',
+	help => "-6\n   use IPv6",
+);
+
+# SNMPv1/2
+
+$np->add_arg(
+	spec => 'protocol|P=s',
+	help => "-P, --protocol=[1|2|3]\n   SNMP protocol version ('2c' also accepted)",
+	required => 1,
+	default => 2,
+);
+
+$np->add_arg(
+	spec => 'community|C=s',
+	help => "-C, --community=<snmp_community>\n   SNMP community (SNMP version 1 or 2 only)",
+	required => 1,
+	default => 'public',
+);
+
+# SNMPv3
+
+$np->add_arg(
+	spec => 'username=s',
+	help => "--username=<snmp_username>\n   SNMP username (SNMP version 3)",
+);
+
+$np->add_arg(
+	spec => 'authkey=s',
+	help => "--authkey=<snmp_authkey>\n   SNMP authkey (SNMP version 3)",
+);
+
+$np->add_arg(
+	spec => 'authpassword=s',
+	help => "--authpassord=<snmp_authpassword>\n   SNMP authpassword (SNMP version 3)",
+);
+
+$np->add_arg(
+	spec => 'authprotocol=s',
+	help => "--authprotocol=<snmp_authprotocol>\n   SNMP authprotocol (SNMP version 3)",
+);
+
+$np->add_arg(
+	spec => 'privkey=s',
+	help => "--privkey=<snmp_privkey>\n   SNMP privkey (SNMP version 3)",
+);
+
+$np->add_arg(
+	spec => 'privpassword=s',
+	help => "--privpassword=<snmp_privpassword>\n   SNMP privpassword (SNMP version 3)",
+	default => undef
+);
+
+$np->add_arg(
+	spec => 'privprotocol=s',
+	help => "--privprotocol=<snmp_privprotocol>\n   SNMP privprotocol (SNMP version 3)",
+);
+
+# other
+
+$np->add_arg(
+	spec => 'noperfdata|F',
+	help => "-F, --noperfdata\n   Don't output performance data",
+);
+
+# $np->add_arg(
+# 	spec => 'oldcounters|o',
+# 	help => "-o, --oldcounters\n   Use old 32-bit counters (deprecated) (default: no)",
+# );
+
+$np->add_arg(
+	spec => 'warnifcritical',
+	help => "--warnifcritical\n   Returns a WARNING instead of CRITICAL on interface status (default: no)",
+);
+
+$np->add_arg(
+	spec => 'datadir|d=s',
+	help => "-d <directory>, --datadir=<directory>\n   Data directory for persistent performance data (default: $STATEDIR)",
+	required => 1,
+	default => $STATEDIR
+);
+
+# modes
+$np->add_arg(
+	spec => 'modes',
+	help => "--modes\n   List check modes.",
+);
+
+$np->add_arg(
+	spec => 'mode|m=s',
+	help => "-m, --mode\n   Check modes.",
+	required => 1,
+	default => 'optics',
+);
+
+# Threshold
+$np->add_arg(
+	spec => 'whlscrc=s',
+	help => "--whlscrc=INTEGER:INTEGER\n   warning threshold for HLS CRC errors (errors per second)\n"
+              . " See http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT "
+              . "for the threshold format. ",
+);
+$np->add_arg(
+	spec => 'chlscrc=s',
+	help => "--chlscrc=INTEGER:INTEGER\n   cricitcal threshold for HLS CRC errors (errors per seconds)\n"
+              . " See http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT "
+              . "for the threshold format. ",
+);
+
+$np->getopts();
+
+# Safety Net
+alarm $np->opts->timeout;
+
+#----------------------------------------
+# List mode
+#----------------------------------------
+if (defined $np->opts->modes)
+{
+	print "Mode list:\n";
+	print "optics: check optical power \n";
+	# my $power_in = 2;
+	# my $power_out = watt2dBm($power_in);
+	# print "interface-detail: check interface statistics detail \n";
+	$np->nagios_exit(OK,'');
+}
+
+#----------------------------------------
+# IP Transport Domain
+#----------------------------------------
+
+my $domain = 'udp4';
+
+if (defined $np->opts->ipv6)
+{
+	if (defined $np->opts->ipv4)
+	{
+		$np->nagios_die('options -4 and -6 are mutually exclusive');
+	}
+	$domain = 'udp6';
+}
+
+#----------------------------------------
+# SNMP Session
+#----------------------------------------
+
+
+my ($snmp_session, $snmp_error);
+
+if ($np->opts->protocol eq '1'
+	|| $np->opts->protocol eq '2'
+	|| $np->opts->protocol eq '2c')
+{
+	($snmp_session, $snmp_error) = Net::SNMP->session(
+		-hostname => $np->opts->hostname,
+		-port => $np->opts->port,
+		-domain => $domain,
+		-version => ($np->opts->protocol eq '2c' ? '2' : $np->opts->protocol),
+		-community => $np->opts->community,
+	);
+}
+elsif ($np->opts->protocol eq '3')
+{
+	($snmp_session, $snmp_error) = Net::SNMP->session(
+		-hostname => $np->opts->hostname,
+		-port => $np->opts->port,
+		-domain => $domain,
+		-version => $np->opts->protocol,
+		-username => $np->opts->username,
+		-authkey => $np->opts->authkey,
+		-authpassword => $np->opts->authpassword,
+		-authprotocol => $np->opts->authprotocol,
+		-privkey => $np->opts->privkey,
+		-privpassword => $np->opts->privpassword,
+		-privprotocol => $np->opts->privprotocol,
+	);
+}
+else
+{
+	$np->nagios_die("invalid snmp protocol");
+}
+
+$np->nagios_die($snmp_error) if (!defined $snmp_session);
+
+
+#----------------------------------------
+# Cache Directory
+#----------------------------------------
+
+if (! -w $np->opts->datadir)
+{
+	$np->nagios_die("Unable to write to data directory" . $np->opts->datadir);
+}
+
+my $ifid;
+$ifid = get_ifid($np, $snmp_session, $np->opts->interface);
+$np->nagios_die('interface not found') if (!defined $ifid);
+
+#----------------------------------------
+# Optics mode
+#----------------------------------------
+if ($np->opts->mode eq "optics")
+{
+	get_optics($np, $snmp_session, $ifid, $OIDS_OPTICS);
+}
+
+# if ($np->opts->mode eq "interface-detail")
+# {
+# 	get_interface_detail($np, $snmp_session, $ifid, $OIDS_INTERFACE);
+# }
+
+
