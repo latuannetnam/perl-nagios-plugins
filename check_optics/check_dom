@@ -339,6 +339,13 @@ sub get_optics($$$$)
 								   $currentBiasLoAlarm,
 								   $currentBiasHiAlarm)
 				);
+		
+		$np->add_perfdata(label => "bias_current_lo_threshold", 
+				value => $ifinfo->{currentBias} - $currentBiasLoAlarm
+		);		
+		$np->add_perfdata(label => "bias_current_hi_threshold", 
+				value => $currentBiasHiAlarm - $ifinfo->{currentBias}
+		);		
 
 		$np->add_perfdata(label => "rx_power", 
 				value => $ifinfo->{rxPower},
@@ -351,6 +358,12 @@ sub get_optics($$$$)
 								   $rxPwrLoAlarm,
 								   $rxPwrHiAlarm)
 				);
+		$np->add_perfdata(label => "rx_power_lo_threshold", 
+				value => $ifinfo->{rxPower} - $rxPwrLoAlarm
+		);		
+		$np->add_perfdata(label => "rx_power_hi_threshold", 
+				value => $rxPwrHiAlarm - $ifinfo->{rxPower}
+		);		
 		
 		$np->add_perfdata(label => "tx_power", 
 				value => $ifinfo->{txPower}, 
@@ -363,6 +376,12 @@ sub get_optics($$$$)
 								   $txPwrLoAlarm,
 								   $txPwrHiAlarm)
 				);
+		$np->add_perfdata(label => "tx_power_lo_threshold", 
+				value => $ifinfo->{txPower} - $txPwrLoAlarm
+		);		
+		$np->add_perfdata(label => "tx_power_hi_threshold", 
+				value => $txPwrHiAlarm - $ifinfo->{txPower}
+		);				
 		
 		$np->add_perfdata(label => "temperature", 
 				value => $ifinfo->{temperature}, 
@@ -375,6 +394,13 @@ sub get_optics($$$$)
 								   $tempLoAlarm,
 								   $tempHiAlarm)
 				);
+		$np->add_perfdata(label => "temperature_lo_threshold", 
+				value => $ifinfo->{temperature} - $tempLoAlarm, 		
+		);
+		$np->add_perfdata(label => "temperature_hi_threshold", 
+				value => $tempHiAlarm - $ifinfo->{temperature}, 		
+		);
+
 
 	}	
 
