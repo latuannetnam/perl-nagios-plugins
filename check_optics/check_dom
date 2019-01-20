@@ -25,35 +25,64 @@ use Net::SNMP;
 use Data::Dumper;
 
 my $STATEDIR = '/var/tmp';
-my $POWER_MUL = 0.001;
-my $POWER_WATT_MUL = 0.0001;
-my $CURRENT_MUL =  0.001;
-my $TEMPERATURE_MUL = 0.001;
+my $POWER_MUL_HP = 0.001;
+my $POWER_WATT_MUL_HP = 0.0001;
+my $CURRENT_MUL_HP =  0.001;
+my $TEMPERATURE_MUL_HP = 0.001;
+my $POWER_MUL_JUNIPER = 0.01;
+my $CURRENT_MUL_JUNIPER =  0.001;
+
+
 my $OIDS_INTERFACE = {
+	ifName => '.1.3.6.1.2.1.31.1.1.1.1',
 	ifDescr => '.1.3.6.1.2.1.2.2.1.2',
 };
 
-my $OIDS_OPTICS = {
-	hpicfXcvrBias => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.13',
-	hpicfXcvrBiasHiAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.26',
-	hpicfXcvrBiasLoAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.27',
-	hpicfXcvrBiasHiWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.28',
-	hpicfXcvrBiasLoWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.29',
-	hpicfXcvrRxPower => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.15',
-	hpicfXcvrRcvPwrHiAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.34',
-	hpicfXcvrRcvPwrLoAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.35',
-	hpicfXcvrRcvPwrHiWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.36',
-	hpicfXcvrRcvPwrLoWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.37',
-	hpicfXcvrTxPower => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.14',
- 	hpicfXcvrPwrOutHiAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.30',
-	hpicfXcvrPwrOutLoAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.31',
-	hpicfXcvrPwrOutHiWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.32',
-	hpicfXcvrPwrOutLoWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.33',
-	hpicfXcvrTemp => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.11',
-	hpicfXcvrTempHiAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.18',
-	hpicfXcvrTempLoAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.19',
-	hpicfXcvrTempHiWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.20',
-	hpicfXcvrTempLoWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.21',
+my $OIDS_OPTICS_HP = {
+	currentBias => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.13',
+	currentBiasHiAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.26',
+	currentBiasLoAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.27',
+	currentBiasHiWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.28',
+	currentBiasLoWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.29',
+	rxPower => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.15',
+	rxPwrHiAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.34',
+	rxPwrLoAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.35',
+	rxPwrHiWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.36',
+	rxPwrLoWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.37',
+	txPower => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.14',
+ 	txPwrHiAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.30',
+	txPwrLoAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.31',
+	txPwrHiWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.32',
+	txPwrLoWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.33',
+	temperature => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.11',
+	tempHiAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.18',
+	tempLoAlarm => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.19',
+	tempHiWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.20',
+	tempLoWarn => '.1.3.6.1.4.1.11.2.14.11.5.1.82.1.1.1.1.21',
+};
+
+my $OIDS_OPTICS_JUNIPER = {
+	currentBias => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.6',
+	currentBiasHiAlarm => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.13',
+	currentBiasLoAlarm => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.14',
+	currentBiasHiWarn => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.15',
+	currentBiasLoWarn => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.16',
+	rxPower => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.5',
+	rxPwrHiAlarm => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.9',
+	rxPwrLoAlarm => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.10',
+ 	rxPwrHiWarn => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.11',
+	rxPwrLoWarn  => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.12',
+	txPower => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.7',
+	txPwrHiAlarm => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.17',
+	txPwrLoAlarm => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.18',
+	txPwrHiWarn => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.19',
+	txPwrLoWarn => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.20',
+	temperature => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.8',
+	tempHiAlarm => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.21',
+	tempLoAlarm => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.22',
+	tempHiWarn => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.23',
+	tempLoWarn => '.1.3.6.1.4.1.2636.3.60.1.1.1.1.24',
+	
 };	
 
 sub compute_realspeed
@@ -81,17 +110,32 @@ sub get_ifid($$$)
 	my $snmp_session = shift or die;
 	my $ifdescr = shift or die;
 
-	my $result = $snmp_session->get_table(-baseoid => $OIDS_INTERFACE->{ifDescr});
+	my $result = $snmp_session->get_table(-baseoid => $OIDS_INTERFACE->{ifName});
 	$np->nagios_die('get_ifid: ' . $snmp_session->error()) if !defined $result;
 
 	foreach my $ifid (keys %$result)
 	{
+		# print "ifid:$ifid. name: $result->{$ifid}\n";
+		if ($result->{$ifid} eq $ifdescr)
+		{
+			$ifid =~ s/$OIDS_INTERFACE->{ifName}\.//;
+			return $ifid;
+		}
+	}
+	# check ifDesc if not match interface name
+	$result = $snmp_session->get_table(-baseoid => $OIDS_INTERFACE->{ifDescr});
+	$np->nagios_die('get_ifid: ' . $snmp_session->error()) if !defined $result;
+
+	foreach my $ifid (keys %$result)
+	{
+		# print "ifid:$ifid. name: $result->{$ifid}\n";
 		if ($result->{$ifid} eq $ifdescr)
 		{
 			$ifid =~ s/$OIDS_INTERFACE->{ifDescr}\.//;
 			return $ifid;
 		}
 	}
+
 
 	return undef;
 }
@@ -175,7 +219,20 @@ sub get_optics($$$$)
 	my $np = shift or die;
 	my $snmp_session = shift or die;
 	my $ifid = shift or die;
-	my $oids = shift or die;
+	my $os = shift or die;
+
+	my $oids;
+	if ($os eq "Juniper")
+	{
+		$oids = $OIDS_OPTICS_JUNIPER;
+	}
+	elsif ($os eq "HP") {
+		$oids = $OIDS_OPTICS_HP;
+	}
+	else {
+		$np->nagios_die("Unkown OS: $os");
+	}
+	
 	my @oids_list = ();
 	foreach my $item (keys %$oids)
 	{
@@ -188,22 +245,37 @@ sub get_optics($$$$)
 
 	foreach my $item (keys %$oids)
 	{
+		
 		$ifinfo->{$item} = $result->{"$oids->{$item}.$ifid"};
-		if ($item =~ /Power/)
+		if ($os eq "Juniper")
 		{
-			$ifinfo->{$item} = $ifinfo->{$item} * $POWER_MUL;
+			if ($item =~ /Power/)
+			{
+				$ifinfo->{$item} = $ifinfo->{$item} * $POWER_MUL_JUNIPER;
+			}
+			elsif ($item =~ /Bias/) {
+				$ifinfo->{$item} = $ifinfo->{$item} * $CURRENT_MUL_JUNIPER;
+			}	
 		}
-		elsif ($item =~ /Bias/) {
-			$ifinfo->{$item} = $ifinfo->{$item} * $CURRENT_MUL;
+		elsif ($os eq "HP") {
+			if ($item =~ /Power/)
+			{
+				$ifinfo->{$item} = $ifinfo->{$item} * $POWER_MUL_HP;
+			}
+			elsif ($item =~ /Bias/) {
+				$ifinfo->{$item} = $ifinfo->{$item} * $CURRENT_MUL_HP;
+			}
+			elsif ($item =~ /temp/) {
+				# convert from 1/1000 degree to degree
+				$ifinfo->{$item} = $ifinfo->{$item} * $TEMPERATURE_MUL_HP;
+			}
+			elsif ($item =~ /Pwr/) {
+				# convert from 1/10 microWatt to milliWatt
+				$ifinfo->{$item} = watt2dBm($np, $ifinfo->{$item} * $POWER_WATT_MUL_HP);
+			}
 		}
-		elsif ($item =~ /Temp/) {
-			# convert from 1/1000 degree to degree
-			$ifinfo->{$item} = $ifinfo->{$item} * $TEMPERATURE_MUL;
-		}
-		elsif ($item =~ /hpicfXcvrPwrOut/ || $item =~ /hpicfXcvrRcvPwr/) {
-			# convert from 1/10 microWatt to milliWatt
-			$ifinfo->{$item} = watt2dBm($np, $ifinfo->{$item} * $POWER_WATT_MUL);
-		}
+		
+		
 
 
 	}
@@ -211,51 +283,97 @@ sub get_optics($$$$)
 	#----------------------------------------
 	# Performance Data
 	#----------------------------------------
-	# print "warning: $ifinfo->{jnxDomCurrentRxLaserPowerLowWarningThreshold}:$ifinfo->{jnxDomCurrentRxLaserPowerHighWarningThreshold} \n";
-	# $ifinfo->{jnxDomCurrentRxLaserPower} = -17.5;
-	# $ifinfo->{jnxDomCurrentTxLaserOutputPower} = -9; 
-	# $ifinfo->{jnxDomCurrentModuleTemperature} = 90;
-	# $ifinfo->{jnxDomCurrentTxLaserBiasCurrent} = 0.5;
+	# print "warning: $ifinfo->{rxPwrLoWarn}:$ifinfo->{rxPwrHiWarn} \n";
+	# $ifinfo->{rxPower} = -17.5;
+	# $ifinfo->{txPower} = -9; 
+	# $ifinfo->{temperature} = 90;
+	# $ifinfo->{currentBias} = 0.5;
+	my $power_delta = 0;
+	my $current_delta = 0;
+	my $temp_delta = 0;
+	if ($np->opts->currentdelta)
+	{
+		$current_delta = $np->opts->currentdelta;
+	}
+	if ($np->opts->powerdelta)
+	{
+		$power_delta = $np->opts->powerdelta;
+	}
+	if ($np->opts->tempdelta)
+	{
+		$temp_delta = $np->opts->tempdelta;
+	}
+	
+	# print("current delta:$current_delta, power delta:$power_delta, temp delta:$temp_delta \n");
+	my $currentBiasLoWarn = $ifinfo->{currentBiasLoWarn} + $current_delta;
+	my $currentBiasHiWarn = $ifinfo->{currentBiasHiWarn} - $current_delta;
+	my $currentBiasLoAlarm	=  $ifinfo->{currentBiasLoAlarm} + $current_delta;
+	my $currentBiasHiAlarm = $ifinfo->{currentBiasHiAlarm} - $current_delta;
+
+	my $rxPwrLoWarn = $ifinfo->{rxPwrLoWarn} + $power_delta;
+	my $rxPwrHiWarn = $ifinfo->{rxPwrHiWarn} - $power_delta;
+	my $rxPwrLoAlarm = $ifinfo->{rxPwrLoAlarm} + $power_delta;
+	my $rxPwrHiAlarm =  $ifinfo->{rxPwrHiAlarm} - $power_delta;
+
+	my $txPwrLoWarn = $ifinfo->{txPwrLoWarn} + $power_delta;
+	my $txPwrHiWarn = $ifinfo->{txPwrHiWarn} - $power_delta;
+	my $txPwrLoAlarm = $ifinfo->{txPwrLoAlarm} + $power_delta;
+	my $txPwrHiAlarm =  $ifinfo->{txPwrHiAlarm} - $power_delta;
+
+	my $tempLoWarn = $ifinfo->{tempLoWarn} + $temp_delta;
+	my $tempHiWarn = $ifinfo->{tempHiWarn} - $temp_delta;
+	my $tempLoAlarm = $ifinfo->{tempLoAlarm} + $temp_delta;
+	my $tempHiAlarm = $ifinfo->{tempHiAlarm} - $temp_delta; 
+
+
 	if (!$np->opts->noperfdata)
 	{
 		$np->add_perfdata(label => "bias_current", 
-				value => $ifinfo->{hpicfXcvrBias}, 
+				value => $ifinfo->{currentBias},
+				min =>  sprintf("%.2f", $currentBiasLoAlarm),
+				max => sprintf("%.2f", $currentBiasHiAlarm),
 				warning => sprintf("%.2f:%.2f", 
-								   $ifinfo->{hpicfXcvrBiasLoWarn},
-								   $ifinfo->{hpicfXcvrBiasHiWarn}), 
+								   $currentBiasLoWarn,
+								   $currentBiasHiWarn), 
 				critical => sprintf("%.2f:%.2f",
-								   $ifinfo->{hpicfXcvrBiasLoAlarm},
-								   $ifinfo->{hpicfXcvrBiasHiAlarm})
+								   $currentBiasLoAlarm,
+								   $currentBiasHiAlarm)
 				);
 
 		$np->add_perfdata(label => "rx_power", 
-				value => $ifinfo->{hpicfXcvrRxPower}, 
+				value => $ifinfo->{rxPower},
+				min => sprintf("%.2f", $rxPwrLoAlarm),
+				max => sprintf("%.2f", $rxPwrHiAlarm),
 				warning => sprintf("%.2f:%.2f", 
-								   $ifinfo->{hpicfXcvrRcvPwrLoWarn},
-								   $ifinfo->{hpicfXcvrRcvPwrHiWarn}), 
+								   $rxPwrLoWarn,
+								   $rxPwrHiWarn), 
 				critical => sprintf("%.2f:%.2f",
-								   $ifinfo->{hpicfXcvrRcvPwrLoAlarm},
-								   $ifinfo->{hpicfXcvrRcvPwrHiAlarm})
+								   $rxPwrLoAlarm,
+								   $rxPwrHiAlarm)
 				);
 		
-		$np->add_perfdata(label => "output_power", 
-				value => $ifinfo->{hpicfXcvrTxPower}, 
+		$np->add_perfdata(label => "tx_power", 
+				value => $ifinfo->{txPower}, 
+				min => sprintf("%.2f", $txPwrLoAlarm),
+				max => sprintf("%.2f", $txPwrHiAlarm),
 				warning => sprintf("%.2f:%.2f", 
-								   $ifinfo->{hpicfXcvrPwrOutLoWarn},
-								   $ifinfo->{hpicfXcvrPwrOutHiWarn}), 
+								   $txPwrLoWarn,
+								   $txPwrHiWarn), 
 				critical => sprintf("%.2f:%.2f",
-								   $ifinfo->{hpicfXcvrPwrOutLoAlarm},
-								   $ifinfo->{hpicfXcvrPwrOutHiAlarm})
+								   $txPwrLoAlarm,
+								   $txPwrHiAlarm)
 				);
 		
 		$np->add_perfdata(label => "temperature", 
-				value => $ifinfo->{hpicfXcvrTemp}, 
+				value => $ifinfo->{temperature}, 
+				min => sprintf("%.2f", $tempLoAlarm),
+				max => sprintf("%.2f", $tempHiAlarm),
 				warning => sprintf("%.2f:%.2f", 
-								   $ifinfo->{hpicfXcvrTempLoWarn},
-								   $ifinfo->{hpicfXcvrTempHiWarn}), 
+								   $tempLoWarn,
+								   $tempHiWarn), 
 				critical => sprintf("%.2f:%.2f",
-								   $ifinfo->{hpicfXcvrTempLoAlarm},
-								   $ifinfo->{hpicfXcvrTempHiAlarm})
+								   $tempLoAlarm,
+								   $tempHiAlarm)
 				);
 
 	}	
@@ -263,11 +381,11 @@ sub get_optics($$$$)
 	#----------------------------------------
 	# Metrics Summary
 	#----------------------------------------
-	my $metrics = sprintf("Laser Bias current: %s mA /RX power: %s dBm / Output power: %s dBm / Temperature: %s degrees C",
-				$ifinfo->{hpicfXcvrBias},
-				$ifinfo->{hpicfXcvrRxPower},
-				$ifinfo->{hpicfXcvrTxPower},
-				$ifinfo->{hpicfXcvrTemp},
+	my $metrics = sprintf("Laser Bias current: %s mA /RX power: %s dBm / TX power: %s dBm / Temperature: %s degrees C",
+				$ifinfo->{currentBias},
+				$ifinfo->{rxPower},
+				$ifinfo->{txPower},
+				$ifinfo->{temperature},
 	);
 	#----------------------------------------
 	# Status Checks
@@ -278,46 +396,30 @@ sub get_optics($$$$)
 	my $prefix = " ";
 
 	$np->add_message(OK,'');
-	if (($code = $np->check_threshold(check => $ifinfo->{hpicfXcvrBias}, 
-			warning => sprintf("%.2f:%.2f", 
-								   $ifinfo->{hpicfXcvrBiasLoWarn},
-								   $ifinfo->{hpicfXcvrBiasHiWarn}), 
-			critical => sprintf("%.2f:%.2f",
-								$ifinfo->{hpicfXcvrBiasLoAlarm},
-								$ifinfo->{hpicfXcvrBiasHiAlarm}))) != OK)
+	if (($code = $np->check_threshold(check => $ifinfo->{currentBias}, 
+			warning => "$currentBiasLoWarn:$currentBiasHiWarn", 
+			critical => "$currentBiasLoAlarm:$currentBiasHiAlarm")) != OK)
 		{
 			$np->add_message($code, $prefix . '[BIAS CURRENT]');
 		}
 
-	if (($code = $np->check_threshold(check => $ifinfo->{hpicfXcvrRxPower}, 
-			warning => sprintf("%.2f:%.2f", 
-								   $ifinfo->{hpicfXcvrRcvPwrLoWarn},
-								   $ifinfo->{hpicfXcvrRcvPwrHiWarn}), 
-			critical => sprintf("%.2f:%.2f",
-								$ifinfo->{hpicfXcvrRcvPwrLoAlarm},
-								$ifinfo->{hpicfXcvrRcvPwrHiAlarm}))) != OK)
+	if (($code = $np->check_threshold(check => $ifinfo->{rxPower}, 
+			warning => "$rxPwrLoWarn:$rxPwrHiWarn", 					   
+			critical => "$rxPwrLoAlarm:$rxPwrHiAlarm")) != OK)
 		{
 			$np->add_message($code, $prefix . '[RX POWER]');
 		}
 	
-	if (($code = $np->check_threshold(check => $ifinfo->{hpicfXcvrTxPower}, 
-			warning => sprintf("%.2f:%.2f", 
-								   $ifinfo->{hpicfXcvrPwrOutLoWarn},
-								   $ifinfo->{hpicfXcvrPwrOutHiWarn}), 
-			critical => sprintf("%.2f:%.2f",
-								$ifinfo->{hpicfXcvrPwrOutLoAlarm},
-								$ifinfo->{hpicfXcvrPwrOutHiAlarm}))) != OK)
+	if (($code = $np->check_threshold(check => $ifinfo->{txPower}, 
+			warning => "$txPwrLoWarn:$txPwrHiWarn", 
+			critical => "$txPwrLoAlarm:$txPwrHiAlarm")) != OK)
 		{
-			$np->add_message($code, $prefix  . '[OUTPUT POWER]');
+			$np->add_message($code, $prefix  . '[TX POWER]');
 		}		
 	
-	if (($code = $np->check_threshold(check => $ifinfo->{hpicfXcvrTemp}, 
-			warning => sprintf("%.2f:%.2f", 
-								   $ifinfo->{hpicfXcvrTempLoWarn},
-								   $ifinfo->{hpicfXcvrTempHiWarn}), 
-			critical => sprintf("%.2f:%.2f",
-								$ifinfo->{hpicfXcvrTempLoAlarm},
-								$ifinfo->{hpicfXcvrTempHiAlarm}))) != OK)
+	if (($code = $np->check_threshold(check => $ifinfo->{temperature}, 
+			warning => "$tempLoWarn:$tempHiWarn", 
+			critical => "$tempLoAlarm:$tempHiAlarm")) != OK)
 		{
 			$np->add_message($code, $prefix  . '[Temperature]');
 		}			
@@ -330,111 +432,11 @@ sub get_optics($$$$)
 	$np->nagios_exit($exit_code, $exit_message);
 }
 
-sub get_interface_detail($$$$)
-{
-	my $np = shift or die;
-	my $snmp_session = shift or die;
-	my $ifid = shift or die;
-	my $oids = shift or die;
-	my @oids_list = ();
-	foreach my $item (keys %$oids)
-	{
-		push @oids_list, "$oids->{$item}.$ifid";
-	}
-	my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
-	$snmp_session->close();
-	$np->nagios_die('get_optics: ' . $snmp_session->error()) if (!defined $result);
-	my $ifinfo = {};
 
-	foreach my $item (keys %$oids)
-	{
-		$ifinfo->{$item} = $result->{"$oids->{$item}.$ifid"};
-	}
-	$ifinfo->{time} = time;
-	$ifinfo->{ifId} = $ifid;
-	
-	#----------------------------------------
-	# Get Cached Interface Info
-	#----------------------------------------
-
-	my $cached_ifinfo = get_cached_ifinfo($np, $np->opts->hostname, $np->opts->interface);
-	
-	#----------------------------------------
-	# Do the Math
-	#----------------------------------------
-	my ($inHslCrcErrors, $outHslCrcErrors);
-	$inHslCrcErrors = $outHslCrcErrors = 0;
-	if (defined $cached_ifinfo)
-	{
-		my $timedelta = $ifinfo->{time} - $cached_ifinfo->{time};
-		if ($timedelta > 0)
-		{
-		
-			$inHslCrcErrors = ($ifinfo->{ifJnxInHslCrcErrors} - $cached_ifinfo->{ifJnxInHslCrcErrors}) / $timedelta;
-			$outHslCrcErrors = ($ifinfo->{ifJnxOutHslCrcErrors} - $cached_ifinfo->{ifJnxOutHslCrcErrors}) / $timedelta;
-		}
-	}
-	
-	save_cached_ifinfo($np, $np->opts->hostname, $np->opts->interface, $ifinfo);
-	# print Data::Dumper->new([$ifinfo])->Terse(1)->Purity(1)->Dump();
-	#----------------------------------------
-	# Performance Data
-	#----------------------------------------
-	if (!$np->opts->noperfdata)
-	{
-		$np->add_perfdata(label => "in_hls_crc", 
-				value => $inHslCrcErrors, 
-				warning => $np->opts->whlscrc, 
-				critical => $np->opts->chlscrc
-				);
-		$np->add_perfdata(label => "out_hls_crc", 
-				value => $outHslCrcErrors, 
-				warning => $np->opts->whlscrc, 
-				critical => $np->opts->chlscrc
-				);		
-	}			
-	
-	#----------------------------------------
-	# Metrics Summary
-	#----------------------------------------
-	my $metrics = sprintf("In HLS CRC: %s ops / Out HLS CRC: %s ops",
-				  $inHslCrcErrors,
-				  $outHslCrcErrors, 
-				
-	);
-	#----------------------------------------
-	# Status Checks
-	#----------------------------------------
-
-	my $code;
-	my $prefix = " ";
-	$np->add_message(OK,'');
-	if (($code = $np->check_threshold(check => $inHslCrcErrors, 
-			warning => $np->opts->whlscrc, 
-			critical => $np->opts->chlscrc)) != OK)
-		{
-			$np->add_message($code, $prefix . '[IN HLS CRC]');
-		}
-
-	if (($code = $np->check_threshold(check => $outHslCrcErrors, 
-			warning => $np->opts->whlscrc, 
-			critical => $np->opts->chlscrc)) != OK)
-		{
-			$np->add_message($code, $prefix . '[OUT HLS CRC]');
-		}	
-
-	
-	my ($exit_code, $exit_message) = $np->check_messages();
-
-	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
-	$exit_message =~ s/^ *//;
-	$np->nagios_exit($exit_code, $exit_message);
-
-}	
 #------------ Main program ------------------------
 my $np = Nagios::Monitoring::Plugin->new(
 	shortname => 'OPTICAL-DOM',
-	usage => "usage: check_dom <options> -H <host_address> -i interface -m <mode>\n   use --help for more info",
+	usage => "usage: check_dom <options> -H <host_address> -i interface --os <Juniper|HP>\n   use --help for more info",
 	plugin => 'OPTICAL-DOM',
 	version => '1.0'
 );
@@ -452,6 +454,12 @@ $np->add_arg(
 $np->add_arg(
 	spec => 'interface|i=s',
 	help => "-i <interface_name>\n   Interface to check (ex: GigabitEthernet0/1)",
+	required => 1
+);
+
+$np->add_arg(
+	spec => 'os=s',
+	help => "--os <Operating system>\n   Device OS (ex: Juniper/HP)",
 	required => 1
 );
 
@@ -552,30 +560,21 @@ $np->add_arg(
 );
 
 # modes
-$np->add_arg(
-	spec => 'modes',
-	help => "--modes\n   List check modes.",
-);
-
-$np->add_arg(
-	spec => 'mode|m=s',
-	help => "-m, --mode\n   Check modes.",
-	required => 1,
-	default => 'optics',
-);
 
 # Threshold
 $np->add_arg(
-	spec => 'whlscrc=s',
-	help => "--whlscrc=INTEGER:INTEGER\n   warning threshold for HLS CRC errors (errors per second)\n"
-              . " See http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT "
-              . "for the threshold format. ",
+	spec => 'powerdelta=f',
+	help => "max_power=PwrHiAlarm - powerdelta\n min_power=PwrLowAlarm + powerdelta\n",
 );
+
 $np->add_arg(
-	spec => 'chlscrc=s',
-	help => "--chlscrc=INTEGER:INTEGER\n   cricitcal threshold for HLS CRC errors (errors per seconds)\n"
-              . " See http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT "
-              . "for the threshold format. ",
+	spec => 'currentdelta=f',
+	help => "max_current=CurrentHiAlarm - currentdelta\n min_current=CurrentLowAlarm + currentdelta\n",
+);
+
+$np->add_arg(
+	spec => 'tempdelta=f',
+	help => "max_temperature=tempHiAlarm - tempdelta\n min_current=tempLowAlarm + tempdelta\n",
 );
 
 $np->getopts();
@@ -583,18 +582,6 @@ $np->getopts();
 # Safety Net
 alarm $np->opts->timeout;
 
-#----------------------------------------
-# List mode
-#----------------------------------------
-if (defined $np->opts->modes)
-{
-	print "Mode list:\n";
-	print "optics: check optical power \n";
-	# my $power_in = 2;
-	# my $power_out = watt2dBm($power_in);
-	# print "interface-detail: check interface statistics detail \n";
-	$np->nagios_exit(OK,'');
-}
 
 #----------------------------------------
 # IP Transport Domain
@@ -670,14 +657,7 @@ $np->nagios_die('interface not found') if (!defined $ifid);
 #----------------------------------------
 # Optics mode
 #----------------------------------------
-if ($np->opts->mode eq "optics")
-{
-	get_optics($np, $snmp_session, $ifid, $OIDS_OPTICS);
-}
+get_optics($np, $snmp_session, $ifid, $np->opts->os);
 
-# if ($np->opts->mode eq "interface-detail")
-# {
-# 	get_interface_detail($np, $snmp_session, $ifid, $OIDS_INTERFACE);
-# }
 
 
