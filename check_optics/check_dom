@@ -249,7 +249,7 @@ sub get_optics($$$$)
 		$ifinfo->{$item} = $result->{"$oids->{$item}.$ifid"};
 		if ($os eq "Juniper")
 		{
-			if ($item =~ /Power/)
+			if ($item =~ /Power/ || $item =~ /Pwr/)
 			{
 				$ifinfo->{$item} = $ifinfo->{$item} * $POWER_MUL_JUNIPER;
 			}
