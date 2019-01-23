@@ -350,6 +350,7 @@ sub get_ap($$$)
 	#----------------------------------------
 	# Metrics Summary
 	#----------------------------------------
+	# $ap_info->{ruckusZDWLANAPStatus} = 2;
 	my $ap_status =  $AP_STATUS->{$ap_info->{ruckusZDWLANAPStatus}};
 	my $metrics = sprintf("%s [%s] - %s - %d users - %0.2f%% RAM - %d%% CPU",
 				$ap_info->{ruckusZDWLANAPDescription},
@@ -365,6 +366,11 @@ sub get_ap($$$)
 	#----------------------------------------
 	if (!$np->opts->noperfdata)
 	{
+		$np->add_perfdata(label => "ap_status", 
+				value => $ap_info->{ruckusZDWLANAPStatus}, 
+				warning => ":1", 
+				critical => "1:"
+				);
 		$np->add_perfdata(label => "num_user", 
 				value => $ap_info->{ruckusZDWLANAPNumSta}, 
 				# warning => $np->opts->whlscrc, 
@@ -384,8 +390,15 @@ sub get_ap($$$)
 	my $code;
 	my $prefix = " ";
 	$np->add_message(OK,'');
-	my ($exit_code, $exit_message) = $np->check_messages();
-
+	
+	if (($code = $np->check_threshold(
+			check => $ap_info->{ruckusZDWLANAPStatus}, 
+			warning => "~:1", 
+			critical => "1:")) != OK)
+		{
+			$np->add_message($code, $prefix . '[STATUS]');
+		}
+	my ($exit_code, $exit_message) = $np->check_messages();	
 	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
 	$exit_message =~ s/^ *//;
 	$np->nagios_exit($exit_code, $exit_message);
