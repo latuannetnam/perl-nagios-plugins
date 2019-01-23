@@ -211,7 +211,7 @@ sub get_list_ap($$)
 		if ($list_ap->{$ap_index})
 		{
 			my $ap_info = $list_ap->{$ap_index};
-			$ap_info->{'apName'} = uc $result->{$item};
+			# $ap_info->{'apName'} = uc $result->{$item};
 			$list_ap->{$ap_index} = $ap_info;
 			# print $result->{$item}, " abc \n";
 		}
@@ -341,7 +341,7 @@ sub get_ap($$$)
 	foreach my $item (keys %$oids)
 	{
 		$ap_info->{$item} = $result->{"$oids->{$item}.$macdec"};
-		print $item, ":", $ap_info->{$item}, "\n";
+		# print $item, ":", $ap_info->{$item}, "\n";
 	}
 	my $cached_ap = get_cached_ap($np, $np->opts->hostname, $macdec);
 	$ap_info->{time} = time;
