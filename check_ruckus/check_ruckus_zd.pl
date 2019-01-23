@@ -211,7 +211,7 @@ sub get_list_ap($$)
 		if ($list_ap->{$ap_index})
 		{
 			my $ap_info = $list_ap->{$ap_index};
-			# $ap_info->{'apName'} = uc $result->{$item};
+			$ap_info->{'apName'} = $result->{$item};
 			$list_ap->{$ap_index} = $ap_info;
 			# print $result->{$item}, " abc \n";
 		}
