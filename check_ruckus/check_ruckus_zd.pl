@@ -54,8 +54,14 @@ my $OIDS_WLC_STATE = {
 
 my $OIDS_AP = {
 	# ruckusZDWLANAPTable
-	ruckusZDWLANAPDescription => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.2.6',
-	ruckusZDWLANAPIPAddr => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.10.6',
+	# ruckusZDWLANAPDescription => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.2.6',
+	# ruckusZDWLANAPIPAddr => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.10.6',
+	#  ruckusZDAPConfigTable
+	ruckusZDAPConfigMacAddress => '.1.3.6.1.4.1.25053.1.2.2.4.1.1.1.1.2',
+	ruckusZDAPConfigDeviceName => '.1.3.6.1.4.1.25053.1.2.2.4.1.1.1.1.5',
+	ruckusZDAPConfigLocation => '.1.3.6.1.4.1.25053.1.2.2.4.1.1.1.1.7',
+	ruckusZDAPConfigIpAddress => '.1.3.6.1.4.1.25053.1.2.2.4.1.1.1.1.16',
+	ruckusZDAPConfigAPModel => '.1.3.6.1.4.1.25053.1.2.2.4.1.1.1.1.4',
 };
 
 # ruckusZDWLANAPTable
@@ -99,15 +105,21 @@ sub sanitize_fname($)
 sub dec2hex($)
 {
 	my $dec = shift or die;
-	my $dec_hex = sprintf "%X:%X:%X:%X:%X:%X", split(/\./ , $dec) ;
+	my $dec_hex = sprintf "%X-%X-%X-%X-%X-%X", split(/\./ , $dec);
 	return uc $dec_hex;
 }
 
 sub hex2dec($)
 {
 	my $dec_hex = shift or die;
-	my $dec = sprintf "%d.%d.%d.%d.%d.%d", map( hex( $_ ), split( ':', $dec_hex ) );
+	my $dec = sprintf "%d.%d.%d.%d.%d.%d", map( hex( $_ ), split( '-', $dec_hex ) );
 	return uc $dec;
+}
+
+sub format_mac($)
+{
+   my $mac_octet = shift or die;
+   return uc sprintf("%s-%s-%s-%s-%s-%s", unpack('H2' x 6, $mac_octet));
 }
 
 sub get_wlc($$)
@@ -181,41 +193,58 @@ sub get_wlc($$)
 	$np->nagios_exit($exit_code, $exit_message);
 }
 
+sub get_ap_index_from_oid($)
+{
+	my $oid = shift or die;
+	my ($ap_index) = $oid =~ /(\.[^.]+)$/;
+	$ap_index = substr($ap_index, 1);
+	return $ap_index;
+}
+
 sub get_list_ap($$)
 {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
-	# Get list AP from  wlsxSwitchAccessPointTable
-	my $result = $snmp_session->get_table(-baseoid => $OIDS_AP->{ruckusZDWLANAPIPAddr});
-	$np->nagios_die($snmp_session->error()) if (!defined $result);
-	my $list_ap = {};
-	foreach my $item (keys %$result)
+	my @oids_list = ();
+	my $oids = $OIDS_AP;
+	
+	foreach my $item (keys %$oids)
 	{
-		my $ap_info = {};
-		my $ap_index = substr($item, length($OIDS_AP->{ruckusZDWLANAPIPAddr})+1);
-		# print "$ap_index:", uc $result->{$item}, "\n";
-		my $mac_hex = dec2hex($ap_index);
-		$ap_info->{'ipAddress'} = $result->{$item};
-		$ap_info->{'mac'} = $mac_hex;
-		# print "$dec_hex: $result->{$item}\n";
-		$list_ap->{$ap_index} = $ap_info;
+		push @oids_list, "$oids->{$item}";
 	}
-
-	# Get AP detail info from  wlsxWlanAPTable
-	$result = $snmp_session->get_table(-baseoid => $OIDS_AP->{ruckusZDWLANAPDescription});
+	
+	my $list_ap = {};
+	# Get AP detail info from  ruckusZDAPConfigTable
+	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
 	$np->nagios_die($snmp_session->error()) if (!defined $result);
+	
 	foreach my $item (keys %$result)
 	{
-		my $ap_index = substr($item, length($OIDS_AP->{ruckusZDWLANAPDescription})+1);
-		# print "$ap_index:", uc $result->{$item}, "\n";
-		if ($list_ap->{$ap_index})
+		
+		# my ($ap_index) = $item =~ /(\.[^.]+)$/;
+		# $ap_index = substr($ap_index, 1);
+		my $ap_index = get_ap_index_from_oid($item);
+		my $ap_info = $list_ap->{$ap_index};
+		if ($item =~ $oids->{ruckusZDAPConfigMacAddress})
 		{
-			my $ap_info = $list_ap->{$ap_index};
-			$ap_info->{'apName'} = $result->{$item};
-			$list_ap->{$ap_index} = $ap_info;
-			# print $result->{$item}, " abc \n";
+			$ap_info->{mac} = format_mac($result->{$item});
+			# print "$ap_index:", format_mac($result->{$item}), "\n";	
+		}
+		elsif ($item =~ $oids->{ruckusZDAPConfigDeviceName})
+		{
+			$ap_info->{apName} = $result->{$item};
+		}
+		elsif ($item =~ $oids->{ruckusZDAPConfigLocation})
+		{
+			$ap_info->{location} = $result->{$item};
+		}
+		elsif ($item =~ $oids->{ruckusZDAPConfigIpAddress})
+		{
+			$ap_info->{ipAddress} = $result->{$item};
 		}
 		
+		# print "$ap_index: $result->{$item}\n";
+		$list_ap->{$ap_index} = $ap_info;
 	}
 	$snmp_session->close();
 
@@ -232,14 +261,14 @@ sub get_list_ap($$)
 	foreach my $item (keys %$list_ap)
 	{
 		my $ap_info = $list_ap->{$item};
-		print "$index: $ap_info->{apName} [$ap_info->{mac}] $ap_info->{ipAddress}\n";
+		print "$index: [$ap_info->{mac}] $ap_info->{apName}  [$ap_info->{location}] $ap_info->{ipAddress}\n";
 		$index = $index + 1;
 		#----------------------------------------
 		# Performance Data
 		#----------------------------------------
 		if (!$np->opts->noperfdata)
 		{
-			$np->add_perfdata(label => "[$ap_info->{apName}] [$ap_info->{mac}] [$ap_info->{ipAddress}]", 
+			$np->add_perfdata(label => "$ap_info->{mac}]$ap_info->{apName}]$ap_info->{ipAddress}", 
 					value => 1, 
 					);
 		}
@@ -291,7 +320,7 @@ sub save_cached_ap($$$$)
 {
 	my $np = shift or die;
 	my $hostname = shift or die;
-	my $apmac = shift or die;
+	my $ap_mac = shift or die;
 	my $apinfo = shift or die;
 	my $fd;
 
@@ -306,7 +335,7 @@ sub save_cached_ap($$$$)
 			or $np->nagios_die($!);
 	}
 
-	my $datafile = $np->opts->datadir . '/check_ruckus_zd/' . $hostname . '/' . sanitize_fname($apmac) . '.dat';
+	my $datafile = $np->opts->datadir . '/check_ruckus_zd/' . $hostname . '/' . sanitize_fname($ap_mac) . '.dat';
 	
 	if (!open($fd, '>', $datafile . '.new'))
 	{
@@ -321,20 +350,39 @@ sub save_cached_ap($$$$)
 	}
 }
 
+sub get_ap_index($$$)
+{
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	my $ap_mac = shift or die;
+	my $result = $snmp_session->get_table(-baseoid => $OIDS_AP->{ruckusZDAPConfigMacAddress});
+	$np->nagios_die($snmp_session->error()) if !defined $result;
+
+	foreach my $item (keys %$result)
+	{
+		my $mac = format_mac($result->{$item});
+		if ($mac eq $ap_mac)
+		{
+			return get_ap_index_from_oid($item);
+		}
+	}
+	return undef;
+}
 sub get_ap($$$)
 {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
-	my $apmac = shift or die;
+	my $ap_mac = shift or die;
 	my @oids_list = ();
 	my $oids = $OIDS_AP_STATE;
-	my $macdec = hex2dec($apmac);
+
+	# Get AP State from  ruckusZDWLANAPTable
+	my $macdec = hex2dec($ap_mac);
 	foreach my $item (keys %$oids)
 	{
 		push @oids_list, "$oids->{$item}.$macdec";
 	}
 	my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
-	$snmp_session->close();
 	$np->nagios_die($snmp_session->error()) if (!defined $result);
 	my $ap_info = {};
 
@@ -343,17 +391,46 @@ sub get_ap($$$)
 		$ap_info->{$item} = $result->{"$oids->{$item}.$macdec"};
 		# print $item, ":", $ap_info->{$item}, "\n";
 	}
-	my $cached_ap = get_cached_ap($np, $np->opts->hostname, $macdec);
+
+	# Get more AP information from  ruckusZDAPConfigTable
+	my $ap_index = get_ap_index($np, $snmp_session, $ap_mac);
+	if (defined $ap_index)
+	{
+		$oids = $OIDS_AP;
+		foreach my $item (keys %$oids)
+		{
+			push @oids_list, "$oids->{$item}.$ap_index";
+		}
+		my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
+		$np->nagios_die($snmp_session->error()) if (!defined $result);
+		foreach my $item (keys %$oids)
+		{
+			if ($item eq "ruckusZDAPConfigMacAddress")
+			{
+				$ap_info->{ruckusZDAPConfigMacAddress} = format_mac($result->{"$oids->{$item}.$ap_index"});
+			}
+			else
+			{
+				$ap_info->{$item} = $result->{"$oids->{$item}.$ap_index"};
+			}
+			# print $item, ":", $ap_info->{$item}, "\n";
+		}
+	}
+
+	$snmp_session->close();
+	my $cached_ap = get_cached_ap($np, $np->opts->hostname, $ap_mac);
 	$ap_info->{time} = time;
-	save_cached_ap($np, $np->opts->hostname, $macdec, $ap_info);
+	save_cached_ap($np, $np->opts->hostname, $ap_mac, $ap_info);
 	
 	#----------------------------------------
 	# Metrics Summary
 	#----------------------------------------
 	# $ap_info->{ruckusZDWLANAPStatus} = 2;
 	my $ap_status =  $AP_STATUS->{$ap_info->{ruckusZDWLANAPStatus}};
-	my $metrics = sprintf("%s [%s] - %s - %d users - %0.2f%% RAM - %d%% CPU",
-				$ap_info->{ruckusZDWLANAPDescription},
+	my $metrics = sprintf("%s [%s] [%s] [%s] - %s - %d users - %0.2f%% RAM - %d%% CPU",
+				$ap_info->{ruckusZDAPConfigDeviceName},
+				$ap_mac,
+				$ap_info->{ruckusZDAPConfigLocation},
 				$ap_info->{ruckusZDWLANAPIPAddr},
 				$ap_status,
 				$ap_info->{ruckusZDWLANAPNumSta},
@@ -601,6 +678,7 @@ if ($np->opts->protocol eq '1'
 		-domain => $domain,
 		-version => ($np->opts->protocol eq '2c' ? '2' : $np->opts->protocol),
 		-community => $np->opts->community,
+		-translate => [-octetstring => 0x0],
 	);
 }
 elsif ($np->opts->protocol eq '3')
