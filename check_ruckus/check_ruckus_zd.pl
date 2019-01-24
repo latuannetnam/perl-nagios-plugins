@@ -174,7 +174,7 @@ sub get_wlc($$)
 				value => $wcl_memory_usage, 
 				);								
 		$np->add_perfdata(label => "cpu_usage", 
-				value => $wcl_memory_usage, 
+				value => $wcl_cpu_usage, 
 				);										
 	}
 	#----------------------------------------
@@ -368,6 +368,7 @@ sub get_ap_index($$$)
 	}
 	return undef;
 }
+
 sub get_ap($$$)
 {
 	my $np = shift or die;
@@ -614,20 +615,20 @@ $np->add_arg(
 );
 
 # Threshold
-$np->add_arg(
-	spec => 'powerdelta=f',
-	help => "max_power=PwrHiAlarm - powerdelta\n min_power=PwrLowAlarm + powerdelta\n",
-);
+# $np->add_arg(
+# 	spec => 'powerdelta=f',
+# 	help => "max_power=PwrHiAlarm - powerdelta\n min_power=PwrLowAlarm + powerdelta\n",
+# );
 
-$np->add_arg(
-	spec => 'currentdelta=f',
-	help => "max_current=CurrentHiAlarm - currentdelta\n min_current=CurrentLowAlarm + currentdelta\n",
-);
+# $np->add_arg(
+# 	spec => 'currentdelta=f',
+# 	help => "max_current=CurrentHiAlarm - currentdelta\n min_current=CurrentLowAlarm + currentdelta\n",
+# );
 
-$np->add_arg(
-	spec => 'tempdelta=f',
-	help => "max_temperature=tempHiAlarm - tempdelta\n min_current=tempLowAlarm + tempdelta\n",
-);
+# $np->add_arg(
+# 	spec => 'tempdelta=f',
+# 	help => "max_temperature=tempHiAlarm - tempdelta\n min_current=tempLowAlarm + tempdelta\n",
+# );
 $np->getopts();
 
 # Safety Net
@@ -695,6 +696,7 @@ elsif ($np->opts->protocol eq '3')
 		-privkey => $np->opts->privkey,
 		-privpassword => $np->opts->privpassword,
 		-privprotocol => $np->opts->privprotocol,
+		-translate => [-octetstring => 0x0],
 	);
 }
 else

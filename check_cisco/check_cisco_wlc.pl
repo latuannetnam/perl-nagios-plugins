@@ -1,8 +1,7 @@
 #!/usr/bin/perl
 #
-#    check_aruba_wlc nagios plugin: Monitor Aurba Wireless Mobility Controllers
+#    check_cisco_wlc nagios plugin: Monitor Cisco Wireless controller
 #    Copyright (C) 2019 Le Anh Tuan (tuan.la@netnam.vn/latuannetnam@gmail.com)
-#	 Credit to: http://udel.edu/~doke/aruba/check_aruba
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
 #    the Free Software Foundation, either version 3 of the License, or
@@ -34,33 +33,57 @@ my $OIDS_SYSTEM = {
 
 
 my $OIDS_WLC = {
-	#  wlsxSystemXGroup
-	wlsxHostname => '.1.3.6.1.4.1.14823.2.2.1.1.1.1.0',
-	wlsxModelName => '.1.3.6.1.4.1.14823.2.2.1.1.1.2.0',
-	wlsxSwitchTotalNumAccessPoints => '.1.3.6.1.4.1.14823.2.2.1.1.3.1.0',
-	wlsxTotalNumOfUsers => '.1.3.6.1.4.1.14823.2.2.1.4.1.1.0',
-	#  wlsxSystemExtGroup
-	wlsxSysExtMemoryUsedPercent => '.1.3.6.1.4.1.14823.2.2.1.2.1.31.0',
-	wlsxSysExtCpuUsedPercent => '.1.3.6.1.4.1.14823.2.2.1.2.1.30.0',
-	
+	#   ruckusZDSystemInfo
+	ruckusZDSystemName => '.1.3.6.1.4.1.25053.1.2.1.1.1.1.1.0',
+	ruckusZDSystemModel => '.1.3.6.1.4.1.25053.1.2.1.1.1.1.9.0',
+	#  ruckusZDSystemStats
+	ruckusZDSystemStatsNumAP => '.1.3.6.1.4.1.25053.1.2.1.1.1.15.1.0',
+	ruckusZDSystemStatsNumSta => '.1.3.6.1.4.1.25053.1.2.1.1.1.15.2.0',
+	ruckusZDSystemStatsNumRogue => '.1.3.6.1.4.1.25053.1.2.1.1.1.15.3.0',
+	ruckusZDSystemStatsCPUUtil => '.1.3.6.1.4.1.25053.1.2.1.1.1.15.13.0',
+	ruckusZDSystemStatsMemoryUtil => '.1.3.6.1.4.1.25053.1.2.1.1.1.15.14.0',
 };
 
-#   wlsxSwitchAccessPointTable
+#   ruckusZDSystemExpInfo
+my $OIDS_WLC_STATE = {
+	ruckusZDSystemCPUUtil => '.1.3.6.1.4.1.25053.1.2.1.1.1.5.58.0',
+	ruckusZDSystemMemoryUtil => '.1.3.6.1.4.1.25053.1.2.1.1.1.5.59.0',
+	ruckusZDSystemMemorySize => '.1.3.6.1.4.1.25053.1.2.1.1.1.5.60.0',
+};
+
+
 my $OIDS_AP = {
-	apIpAddress => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.5',
-	apLocation => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.9',
+	# ruckusZDWLANAPTable
+	# ruckusZDWLANAPDescription => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.2.6',
+	# ruckusZDWLANAPIPAddr => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.10.6',
+	#  ruckusZDAPConfigTable
+	ruckusZDAPConfigMacAddress => '.1.3.6.1.4.1.25053.1.2.2.4.1.1.1.1.2',
+	ruckusZDAPConfigDeviceName => '.1.3.6.1.4.1.25053.1.2.2.4.1.1.1.1.5',
+	ruckusZDAPConfigLocation => '.1.3.6.1.4.1.25053.1.2.2.4.1.1.1.1.7',
+	ruckusZDAPConfigIpAddress => '.1.3.6.1.4.1.25053.1.2.2.4.1.1.1.1.16',
+	ruckusZDAPConfigAPModel => '.1.3.6.1.4.1.25053.1.2.2.4.1.1.1.1.4',
 };
 
-my $OIDS_AP_USER = {
-	nUserApBSSID => '.1.3.6.1.4.1.14823.2.2.1.4.1.2.1.11'
-};
-
+# ruckusZDWLANAPTable
 my $OIDS_AP_STATE = {
-	apIpAddress => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.5',
-	apLocation => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.9',
-	apChannelNoise => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.13',
-	apSignalToNoiseRatio => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.14'
+	ruckusZDWLANAPDescription => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.2.6',
+	ruckusZDWLANAPIPAddr => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.10.6',
+	ruckusZDWLANAPModel => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.4.6',
+	ruckusZDWLANAPStatus => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.3.6',
+	ruckusZDWLANAPNumSta => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.15.6',
+	ruckusZDWLANAPNumRogues => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.16.6',
+	ruckusZDWLANAPMemUtil => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.27.6',
+	ruckusZDWLANAPMemTotal => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.28.6',
+	ruckusZDWLANAPCPUUtil => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.29.6',
+	ruckusZDWLANAPLANStatsRXByte => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.21.6',
+	ruckusZDWLANAPLANStatsRXPkt => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.22.6',
+	ruckusZDWLANAPLANStatsRXPktErr => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.23.6',
+	ruckusZDWLANAPLANStatsTXByte => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.25.6',
+	ruckusZDWLANAPLANStatsTXPkt => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.26.6',
+	ruckusZDWLANAPLANStatsDropped => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.53.6'
 };
+
+
 
 my $AP_STATUS = {
 	0 => 'Down',
@@ -99,64 +122,6 @@ sub format_mac($)
    return uc sprintf("%s-%s-%s-%s-%s-%s", unpack('H2' x 6, $mac_octet));
 }
 
-sub get_cached_ap($$$)
-{
-	my $np = shift or die;
-	my $hostname = shift or die;
-	my $macdec = shift or die;
-	my $fd;
-	my $datafile = $np->opts->datadir . '/check_aruba_wlc/' . $hostname . '/' . sanitize_fname($macdec) . '.dat';
-	
-	return undef if (!-e $datafile);
-
-	if (!open($fd, '<', $datafile))
-	{
-		$np->nagios_die("unable to open datafile '$datafile': $!");
-	}
-	read($fd, my $content, 8192);
-	close($fd);
-
-	my $data = eval($content);
-	$np->nagios_die("invalid data in datafile '$datafile': $@") if $@;
-	return $data;
-
-	return undef;
-}
-
-sub save_cached_ap($$$$)
-{
-	my $np = shift or die;
-	my $hostname = shift or die;
-	my $ap_mac = shift or die;
-	my $apinfo = shift or die;
-	my $fd;
-
-	if (! -d ($np->opts->datadir . '/check_aruba_wlc/' . $hostname))
-	{
-		if (! -d ($np->opts->datadir . '/check_aruba_wlc'))
-		{
-			mkdir $np->opts->datadir . '/check_aruba_wlc'
-				or $np->nagios_die($!);
-		}
-		mkdir $np->opts->datadir . '/check_aruba_wlc/' . $hostname
-			or $np->nagios_die($!);
-	}
-
-	my $datafile = $np->opts->datadir . '/check_aruba_wlc/' . $hostname . '/' . sanitize_fname($ap_mac) . '.dat';
-	
-	if (!open($fd, '>', $datafile . '.new'))
-	{
-		$np->nagios_die("unable to open datafile '$datafile.new': $!");
-	}
-
-	print $fd Data::Dumper->new([$apinfo])->Terse(1)->Purity(1)->Dump();
-	close($fd);
-	if (!rename($datafile . '.new', $datafile))
-	{
-		$np->nagios_die("unable to rename datafile '$datafile.new' to '$datafile': $!");
-	}
-}
-
 sub get_wlc($$)
 {
 	my $np = shift or die;
@@ -171,20 +136,22 @@ sub get_wlc($$)
 	my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
 	$snmp_session->close();
 	$np->nagios_die($snmp_session->error()) if (!defined $result);
-	my $wlc_name = $result->{$oids->{wlsxHostname}};
-	my $wlc_model = $result->{$oids->{wlsxModelName}};
-	my $wlc_num_ap = $result->{$oids->{wlsxSwitchTotalNumAccessPoints}};
-	my $wlc_num_user = $result->{$oids->{wlsxTotalNumOfUsers}};
-	my $wcl_memory_usage = $result->{$oids->{wlsxSysExtMemoryUsedPercent}};
-	my $wcl_cpu_usage = $result->{$oids->{wlsxSysExtCpuUsedPercent}};
+	my $wlc_name = $result->{$oids->{ruckusZDSystemName}};
+	my $wlc_model = $result->{$oids->{ruckusZDSystemModel}};
+	my $wlc_num_ap = $result->{$oids->{ruckusZDSystemStatsNumAP}};
+	my $wlc_num_user = $result->{$oids->{ruckusZDSystemStatsNumSta}};
+	my $wlc_num_rougue_user = $result->{$oids->{ruckusZDSystemStatsNumRogue}};
+	my $wcl_memory_usage = $result->{$oids->{ruckusZDSystemStatsMemoryUtil}};
+	my $wcl_cpu_usage = $result->{$oids->{ruckusZDSystemStatsCPUUtil}};
 	#----------------------------------------
 	# Metrics Summary
 	#----------------------------------------
-	my $metrics = sprintf("%s [%s] - %d APs - %d users - %d%% RAM - %d%% CPU",
+	my $metrics = sprintf("%s [%s] - %d APs - %d users - %d rougue users - %d%% RAM - %d%% CPU",
 				$wlc_name,
 				$wlc_model,
 				$wlc_num_ap,
 				$wlc_num_user,
+				$wlc_num_rougue_user,
 				$wcl_memory_usage,
 				$wcl_cpu_usage
 	);
@@ -200,11 +167,14 @@ sub get_wlc($$)
 		$np->add_perfdata(label => "num_user", 
 				value => $wlc_num_user, 
 				);		
+		$np->add_perfdata(label => "num_rougue_user", 
+				value => $wlc_num_rougue_user, 
+				);
 		$np->add_perfdata(label => "memory_usage", 
 				value => $wcl_memory_usage, 
 				);								
 		$np->add_perfdata(label => "cpu_usage", 
-				value => $wcl_cpu_usage, 
+				value => $wcl_memory_usage, 
 				);										
 	}
 	#----------------------------------------
@@ -223,6 +193,14 @@ sub get_wlc($$)
 	$np->nagios_exit($exit_code, $exit_message);
 }
 
+sub get_ap_index_from_oid($)
+{
+	my $oid = shift or die;
+	my ($ap_index) = $oid =~ /(\.[^.]+)$/;
+	$ap_index = substr($ap_index, 1);
+	return $ap_index;
+}
+
 sub get_list_ap($$)
 {
 	my $np = shift or die;
@@ -236,34 +214,42 @@ sub get_list_ap($$)
 	}
 	
 	my $list_ap = {};
-	# Get AP detail info from   wlsxSwitchAccessPointEntry
+	# Get AP detail info from  ruckusZDAPConfigTable
 	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
 	$np->nagios_die($snmp_session->error()) if (!defined $result);
 	
 	foreach my $item (keys %$result)
 	{
 		
-		my $ap_index = substr($item, length($oids->{apIpAddress})+1);
+		# my ($ap_index) = $item =~ /(\.[^.]+)$/;
+		# $ap_index = substr($ap_index, 1);
+		my $ap_index = get_ap_index_from_oid($item);
 		my $ap_info = $list_ap->{$ap_index};
-		
-		if ($item =~ $oids->{apIpAddress})
+		if ($item =~ $oids->{ruckusZDAPConfigMacAddress})
 		{
-			$ap_info->{ipAddress} = $result->{$item};
+			$ap_info->{mac} = format_mac($result->{$item});
+			# print "$ap_index:", format_mac($result->{$item}), "\n";	
 		}
-		elsif ($item =~ $oids->{apLocation})
+		elsif ($item =~ $oids->{ruckusZDAPConfigDeviceName})
+		{
+			$ap_info->{apName} = $result->{$item};
+		}
+		elsif ($item =~ $oids->{ruckusZDAPConfigLocation})
 		{
 			$ap_info->{location} = $result->{$item};
 		}
-		my $ap_mac = dec2hex($ap_index);
-		$ap_info->{apName} = $ap_mac;
-		$ap_info->{mac} = $ap_mac;
+		elsif ($item =~ $oids->{ruckusZDAPConfigIpAddress})
+		{
+			$ap_info->{ipAddress} = $result->{$item};
+		}
 		
-		
-		$list_ap->{$ap_index} = $ap_info;
 		# print "$ap_index: $result->{$item}\n";
+		$list_ap->{$ap_index} = $ap_info;
 	}
 	$snmp_session->close();
 
+
+	
 	#----------------------------------------
 	# Metrics Summary
 	#----------------------------------------
@@ -275,7 +261,7 @@ sub get_list_ap($$)
 	foreach my $item (keys %$list_ap)
 	{
 		my $ap_info = $list_ap->{$item};
-		print "$index: [$ap_info->{mac}] [$ap_info->{location}] $ap_info->{ipAddress}\n";
+		print "$index: [$ap_info->{mac}] $ap_info->{apName}  [$ap_info->{location}] $ap_info->{ipAddress}\n";
 		$index = $index + 1;
 		#----------------------------------------
 		# Performance Data
@@ -287,6 +273,8 @@ sub get_list_ap($$)
 					);
 		}
 	}
+
+	
 
 	#----------------------------------------
 	# Print out result
@@ -304,27 +292,81 @@ sub get_list_ap($$)
 	$np->nagios_exit($exit_code, $exit_message);
 
 }
+sub get_cached_ap($$$)
+{
+	my $np = shift or die;
+	my $hostname = shift or die;
+	my $macdec = shift or die;
+	my $fd;
+	my $datafile = $np->opts->datadir . '/check_cisco_wlc/' . $hostname . '/' . sanitize_fname($macdec) . '.dat';
+	
+	return undef if (!-e $datafile);
 
-sub get_ap_users($$$)
+	if (!open($fd, '<', $datafile))
+	{
+		$np->nagios_die("unable to open datafile '$datafile': $!");
+	}
+	read($fd, my $content, 8192);
+	close($fd);
+
+	my $data = eval($content);
+	$np->nagios_die("invalid data in datafile '$datafile': $@") if $@;
+	return $data;
+	return undef;
+}
+
+sub save_cached_ap($$$$)
+{
+	my $np = shift or die;
+	my $hostname = shift or die;
+	my $ap_mac = shift or die;
+	my $apinfo = shift or die;
+	my $fd;
+
+	if (! -d ($np->opts->datadir . '/check_cisco_wlc/' . $hostname))
+	{
+		if (! -d ($np->opts->datadir . '/check_cisco_wlc'))
+		{
+			mkdir $np->opts->datadir . '/check_cisco_wlc'
+				or $np->nagios_die($!);
+		}
+		mkdir $np->opts->datadir . '/check_cisco_wlc/' . $hostname
+			or $np->nagios_die($!);
+	}
+
+	my $datafile = $np->opts->datadir . '/check_cisco_wlc/' . $hostname . '/' . sanitize_fname($ap_mac) . '.dat';
+	
+	if (!open($fd, '>', $datafile . '.new'))
+	{
+		$np->nagios_die("unable to open datafile '$datafile.new': $!");
+	}
+
+	print $fd Data::Dumper->new([$apinfo])->Terse(1)->Purity(1)->Dump();
+	close($fd);
+	if (!rename($datafile . '.new', $datafile))
+	{
+		$np->nagios_die("unable to rename datafile '$datafile.new' to '$datafile': $!");
+	}
+}
+
+sub get_ap_index($$$)
 {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
 	my $ap_mac = shift or die;
-	my $result = $snmp_session->get_table(-baseoid => $OIDS_AP_USER->{nUserApBSSID});
+	my $result = $snmp_session->get_table(-baseoid => $OIDS_AP->{ruckusZDAPConfigMacAddress});
 	$np->nagios_die($snmp_session->error()) if !defined $result;
-	my $num_user = 0;
+
 	foreach my $item (keys %$result)
 	{
 		my $mac = format_mac($result->{$item});
 		if ($mac eq $ap_mac)
 		{
-			$num_user = $num_user + 1; 
-			# print "$item:$mac:$ap_mac\n";	
+			return get_ap_index_from_oid($item);
 		}
 	}
-	return $num_user;
+	return undef;
 }
-
 sub get_ap($$$)
 {
 	my $np = shift or die;
@@ -333,7 +375,7 @@ sub get_ap($$$)
 	my @oids_list = ();
 	my $oids = $OIDS_AP_STATE;
 
-	# Get AP State from   wlsxSwitchAccessPointTable
+	# Get AP State from  ruckusZDWLANAPTable
 	my $macdec = hex2dec($ap_mac);
 	foreach my $item (keys %$oids)
 	{
@@ -348,21 +390,32 @@ sub get_ap($$$)
 		$ap_info->{$item} = $result->{"$oids->{$item}.$macdec"};
 		# print $item, ":", $ap_info->{$item}, "\n";
 	}
-	$ap_info->{apStatus} = 1;
-	if ($ap_info->{apIpAddress} eq "noSuchInstance")
-	{
 
-		$ap_info->{apStatus} = 0;
-		$ap_info->{numUser} = 0;
+	# Get more AP information from  ruckusZDAPConfigTable
+	my $ap_index = get_ap_index($np, $snmp_session, $ap_mac);
+	if (defined $ap_index)
+	{
+		$oids = $OIDS_AP;
 		foreach my $item (keys %$oids)
 		{
-			$ap_info->{$item} = 0;	
+			push @oids_list, "$oids->{$item}.$ap_index";
+		}
+		my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
+		$np->nagios_die($snmp_session->error()) if (!defined $result);
+		foreach my $item (keys %$oids)
+		{
+			if ($item eq "ruckusZDAPConfigMacAddress")
+			{
+				$ap_info->{ruckusZDAPConfigMacAddress} = format_mac($result->{"$oids->{$item}.$ap_index"});
+			}
+			else
+			{
+				$ap_info->{$item} = $result->{"$oids->{$item}.$ap_index"};
+			}
+			# print $item, ":", $ap_info->{$item}, "\n";
 		}
 	}
-	else {
-		#  Get number of user
-		$ap_info->{numUser} = get_ap_users($np, $snmp_session, $ap_mac);
-	}
+
 	$snmp_session->close();
 	my $cached_ap = get_cached_ap($np, $np->opts->hostname, $ap_mac);
 	$ap_info->{time} = time;
@@ -371,17 +424,17 @@ sub get_ap($$$)
 	#----------------------------------------
 	# Metrics Summary
 	#----------------------------------------
-	my $ap_status =  $AP_STATUS->{$ap_info->{apStatus}};
-	
-	my $metrics = sprintf("%s [%s] [%s] [%s] - %s - %d users - %d channel noise - %d signal to noise",
+	# $ap_info->{ruckusZDWLANAPStatus} = 2;
+	my $ap_status =  $AP_STATUS->{$ap_info->{ruckusZDWLANAPStatus}};
+	my $metrics = sprintf("%s [%s] [%s] [%s] - %s - %d users - %0.2f%% RAM - %d%% CPU",
+				$ap_info->{ruckusZDAPConfigDeviceName},
 				$ap_mac,
-				$ap_mac,
-				$ap_info->{apLocation},
-				$ap_info->{apIpAddress},
+				$ap_info->{ruckusZDAPConfigLocation},
+				$ap_info->{ruckusZDWLANAPIPAddr},
 				$ap_status,
-				$ap_info->{numUser},
-				$ap_info->{apChannelNoise},
-				$ap_info->{apSignalToNoiseRatio},
+				$ap_info->{ruckusZDWLANAPNumSta},
+				$ap_info->{ruckusZDWLANAPMemUtil}/$ap_info->{ruckusZDWLANAPMemTotal}*100,
+				$ap_info->{ruckusZDWLANAPCPUUtil},
 	);
 
 	#----------------------------------------
@@ -390,24 +443,21 @@ sub get_ap($$$)
 	if (!$np->opts->noperfdata)
 	{
 		$np->add_perfdata(label => "ap_status", 
-				value => $ap_info->{apStatus}, 
+				value => $ap_info->{ruckusZDWLANAPStatus}, 
 				warning => ":1", 
 				critical => "1:"
 				);
 		$np->add_perfdata(label => "num_user", 
-				value => $ap_info->{numUser}, 
-				# warning => $np->opts->whlscrc, 
-				# critical => $np->opts->chlscrc
-				);		
-		$np->add_perfdata(label => "channel_noise", 
-				value => $ap_info->{apChannelNoise}, 
+				value => $ap_info->{ruckusZDWLANAPNumSta}, 
 				# warning => $np->opts->whlscrc, 
 				# critical => $np->opts->chlscrc
 				);
-		$np->add_perfdata(label => "snr", 
-				value => $ap_info->{apSignalToNoiseRatio}, 
+		$np->add_perfdata(label => "memory_usage", 
+				value => sprintf("%0.2f",$ap_info->{ruckusZDWLANAPMemUtil}/$ap_info->{ruckusZDWLANAPMemTotal}*100) 
 				);		
-		
+		$np->add_perfdata(label => "cpu_usage", 
+				value => sprintf("%0.2f",$ap_info->{ruckusZDWLANAPCPUUtil}) 
+				);				
 	}	
 	#----------------------------------------
 	# Status Checks
@@ -418,7 +468,7 @@ sub get_ap($$$)
 	$np->add_message(OK,'');
 	
 	if (($code = $np->check_threshold(
-			check => $ap_info->{apStatus}, 
+			check => $ap_info->{ruckusZDWLANAPStatus}, 
 			warning => "~:1", 
 			critical => "1:")) != OK)
 		{
@@ -434,9 +484,9 @@ sub get_ap($$$)
 # Main program 
 #----------------------------------------
 my $np = Nagios::Monitoring::Plugin->new(
-	shortname => 'ARUBA-WLC',
-	usage => "usage: check_aruba_instant.pl <options> -H <host_address> \n   use --help for more info",
-	plugin => 'ARUBA-WLC',
+	shortname => 'RUCKUS-ZD',
+	usage => "usage: check_cisco_wlc.pl <options> -H <host_address> \n   use --help for more info",
+	plugin => 'RUCKUS-ZD',
 	version => '1.0'
 );
 
@@ -563,20 +613,20 @@ $np->add_arg(
 );
 
 # Threshold
-# $np->add_arg(
-# 	spec => 'powerdelta=f',
-# 	help => "max_power=PwrHiAlarm - powerdelta\n min_power=PwrLowAlarm + powerdelta\n",
-# );
+$np->add_arg(
+	spec => 'powerdelta=f',
+	help => "max_power=PwrHiAlarm - powerdelta\n min_power=PwrLowAlarm + powerdelta\n",
+);
 
-# $np->add_arg(
-# 	spec => 'currentdelta=f',
-# 	help => "max_current=CurrentHiAlarm - currentdelta\n min_current=CurrentLowAlarm + currentdelta\n",
-# );
+$np->add_arg(
+	spec => 'currentdelta=f',
+	help => "max_current=CurrentHiAlarm - currentdelta\n min_current=CurrentLowAlarm + currentdelta\n",
+);
 
-# $np->add_arg(
-# 	spec => 'tempdelta=f',
-# 	help => "max_temperature=tempHiAlarm - tempdelta\n min_current=tempLowAlarm + tempdelta\n",
-# );
+$np->add_arg(
+	spec => 'tempdelta=f',
+	help => "max_temperature=tempHiAlarm - tempdelta\n min_current=tempLowAlarm + tempdelta\n",
+);
 $np->getopts();
 
 # Safety Net
@@ -644,7 +694,6 @@ elsif ($np->opts->protocol eq '3')
 		-privkey => $np->opts->privkey,
 		-privpassword => $np->opts->privpassword,
 		-privprotocol => $np->opts->privprotocol,
-		-translate => [-octetstring => 0x0],
 	);
 }
 else
