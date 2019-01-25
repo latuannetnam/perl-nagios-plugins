@@ -318,17 +318,21 @@ sub get_ap_users($$$)
 	my $snmp_session = shift or die;
 	my $ap_mac = shift or die;
 	my $result = $snmp_session->get_table(-baseoid => $OIDS_AP_USER->{nUserApBSSID});
-	$np->nagios_die("wlsxUserTable:" + $snmp_session->error()) if !defined $result;
 	my $num_user = 0;
-	foreach my $item (keys %$result)
+	if (defined $result)
 	{
-		my $mac = format_mac($result->{$item});
-		if ($mac eq $ap_mac)
+	foreach my $item (keys %$result)
 		{
-			$num_user = $num_user + 1; 
-			# print "$item:$mac:$ap_mac\n";	
+			my $mac = format_mac($result->{$item});
+			if ($mac eq $ap_mac)
+			{
+				$num_user = $num_user + 1; 
+				# print "$item:$mac:$ap_mac\n";	
+			}
 		}
 	}
+	
+	
 	return $num_user;
 }
 
@@ -348,7 +352,7 @@ sub get_ap($$$)
 	}
 	my $cached_ap = get_cached_ap($np, $np->opts->hostname, $ap_mac);
 	my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
-	$np->nagios_die('wlsxSwitchAccessPointTable:' + $snmp_session->error()) if (!defined $result);
+	$np->nagios_die('wlsxSwitchAccessPointTable:' . $snmp_session->error()) if (!defined $result);
 	my $ap_info = {};
 
 	foreach my $item (keys %$oids)
