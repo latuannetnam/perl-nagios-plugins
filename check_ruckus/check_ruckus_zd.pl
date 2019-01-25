@@ -27,6 +27,8 @@ my $STATEDIR = '/var/tmp';
 
 my $MAX_ENTRIES = 10;
 
+my $CACHE_EXPIRED = 6 * 60; # cache expired time in seconds
+
 my $OIDS_SYSTEM = {
 	 sysDescr => '.1.3.6.1.2.1.1.1.0',
 	 sysObjectID => '.1.3.6.1.2.1.1.2.0',
@@ -137,7 +139,6 @@ sub get_wlc($$)
 		push @oids_list, "$oids->{$item}";
 	}
 	my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
-	$snmp_session->close();
 	$np->nagios_die($snmp_session->error()) if (!defined $result);
 	my $wlc_name = $result->{$oids->{ruckusZDSystemName}};
 	my $wlc_model = $result->{$oids->{ruckusZDSystemModel}};
@@ -192,6 +193,10 @@ sub get_wlc($$)
 
 	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
 	$exit_message =~ s/^ *//;
+
+	# Get all aps detail and cache result
+	get_all_aps($np, $snmp_session);
+	$snmp_session->close();
 
 	$np->nagios_exit($exit_code, $exit_message);
 }
@@ -374,6 +379,41 @@ sub get_ap_index($$$)
 	return undef;
 }
 
+sub get_ap_more_detail($$$$)
+{
+	my $ap_info = shift or die;	
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	my $ap_mac = shift or die;
+
+	my $ap_index = get_ap_index($np, $snmp_session, $ap_mac);
+	if (defined $ap_index)
+	{
+		my $oids = $OIDS_AP;
+		my @oids_list = ();
+		foreach my $item (keys %$oids)
+		{
+			push @oids_list, "$oids->{$item}.$ap_index";
+		}
+		my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
+		$np->nagios_die($snmp_session->error()) if (!defined $result);
+		foreach my $item (keys %$oids)
+		{
+			if ($item eq "ruckusZDAPConfigMacAddress")
+			{
+				$ap_info->{ruckusZDAPConfigMacAddress} = format_mac($result->{"$oids->{$item}.$ap_index"});
+			}
+			else
+			{
+				$ap_info->{$item} = $result->{"$oids->{$item}.$ap_index"};
+			}
+			# print $item, ":", $ap_info->{$item}, "\n";
+		}
+	}
+	return $ap_info;
+  		
+}
+
 sub get_ap($$$)
 {
 	my $np = shift or die;
@@ -399,29 +439,7 @@ sub get_ap($$$)
 	}
 
 	# Get more AP information from  ruckusZDAPConfigTable
-	my $ap_index = get_ap_index($np, $snmp_session, $ap_mac);
-	if (defined $ap_index)
-	{
-		$oids = $OIDS_AP;
-		foreach my $item (keys %$oids)
-		{
-			push @oids_list, "$oids->{$item}.$ap_index";
-		}
-		my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
-		$np->nagios_die($snmp_session->error()) if (!defined $result);
-		foreach my $item (keys %$oids)
-		{
-			if ($item eq "ruckusZDAPConfigMacAddress")
-			{
-				$ap_info->{ruckusZDAPConfigMacAddress} = format_mac($result->{"$oids->{$item}.$ap_index"});
-			}
-			else
-			{
-				$ap_info->{$item} = $result->{"$oids->{$item}.$ap_index"};
-			}
-			# print $item, ":", $ap_info->{$item}, "\n";
-		}
-	}
+	$ap_info = get_ap_more_detail($ap_info, $np, $snmp_session, $ap_mac);
 
 	$snmp_session->close();
 	my $cached_ap = get_cached_ap($np, $np->opts->hostname, $ap_mac);
@@ -487,7 +505,156 @@ sub get_ap($$$)
 	$np->nagios_exit($exit_code, $exit_message);
 }
 
+sub get_ap_cached($$$)
+{
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	my $ap_mac = shift or die;
+
+	my $ap_info = get_cached_ap($np, $np->opts->hostname, $ap_mac);
+	# print "Get cache for:$ap_mac \n";
+	if (!defined $ap_info)
+	{
+		# print "Cache not found. Query SNMP\n";
+		my @oids_list = ();
+		my $oids = $OIDS_AP_STATE;
+
+		# Get AP State from  ruckusZDWLANAPTable
+		my $macdec = hex2dec($ap_mac);
+		foreach my $item (keys %$oids)
+		{
+			push @oids_list, "$oids->{$item}.$macdec";
+		}
+		my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
+		$np->nagios_die($snmp_session->error()) if (!defined $result);
+		
+		foreach my $item (keys %$oids)
+		{
+			$ap_info->{$item} = $result->{"$oids->{$item}.$macdec"};
+			# print $item, ":", $ap_info->{$item}, "\n";
+		}
+
+		# Get more AP information from  ruckusZDAPConfigTable
+		$ap_info = get_ap_more_detail($ap_info, $np, $snmp_session, $ap_mac);
+		$snmp_session->close();
+		$ap_info->{time} = time;
+		save_cached_ap($np, $np->opts->hostname, $ap_mac, $ap_info);
+	}
+	else
+	{
+
+		my $time_delta = time - $ap_info;
+		if ($time_delta > $CACHE_EXPIRED)
+		{
+			$AP_STATUS->{$ap_info->{ruckusZDWLANAPStatus}} = 0;
+			$ap_info->{ruckusZDWLANAPNumSta} = 0;
+		}
+
+	}
+
+	#----------------------------------------
+	# Metrics Summary
+	#----------------------------------------
+	# $ap_info->{ruckusZDWLANAPStatus} = 2;
+	my $ap_status =  $AP_STATUS->{$ap_info->{ruckusZDWLANAPStatus}};
+	my $metrics = sprintf("%s [%s] [%s] [%s] - %s - %d users - %0.2f%% RAM - %d%% CPU",
+				$ap_info->{ruckusZDAPConfigDeviceName},
+				$ap_mac,
+				$ap_info->{ruckusZDAPConfigLocation},
+				$ap_info->{ruckusZDWLANAPIPAddr},
+				$ap_status,
+				$ap_info->{ruckusZDWLANAPNumSta},
+				$ap_info->{ruckusZDWLANAPMemUtil}/$ap_info->{ruckusZDWLANAPMemTotal}*100,
+				$ap_info->{ruckusZDWLANAPCPUUtil},
+	);
+
+	#----------------------------------------
+	# Performance Data
+	#----------------------------------------
+	if (!$np->opts->noperfdata)
+	{
+		$np->add_perfdata(label => "ap_status", 
+				value => $ap_info->{ruckusZDWLANAPStatus}, 
+				warning => ":1", 
+				critical => "1:"
+				);
+		$np->add_perfdata(label => "num_user", 
+				value => $ap_info->{ruckusZDWLANAPNumSta}, 
+				# warning => $np->opts->whlscrc, 
+				# critical => $np->opts->chlscrc
+				);
+		$np->add_perfdata(label => "memory_usage", 
+				value => sprintf("%0.2f",$ap_info->{ruckusZDWLANAPMemUtil}/$ap_info->{ruckusZDWLANAPMemTotal}*100) 
+				);		
+		$np->add_perfdata(label => "cpu_usage", 
+				value => sprintf("%0.2f",$ap_info->{ruckusZDWLANAPCPUUtil}) 
+				);				
+	}	
+	#----------------------------------------
+	# Status Checks
+	#----------------------------------------
+
+	my $code;
+	my $prefix = " ";
+	$np->add_message(OK,'');
+	
+	if (($code = $np->check_threshold(
+			check => $ap_info->{ruckusZDWLANAPStatus}, 
+			warning => "~:1", 
+			critical => "1:")) != OK)
+		{
+			$np->add_message($code, $prefix . '[STATUS]');
+		}
+	my ($exit_code, $exit_message) = $np->check_messages();	
+	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
+	$exit_message =~ s/^ *//;
+	$np->nagios_exit($exit_code, $exit_message);
+}
+
 sub get_all_aps($$)
+{
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	my @oids_list = ();
+	# Get AP State from  ruckusZDWLANAPTable
+	my $oids = $OIDS_AP_STATE;
+	foreach my $item (keys %$oids)
+	{
+		push @oids_list, "$oids->{$item}";
+	}
+	my $list_ap = {};
+	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
+	$np->nagios_die($snmp_session->error()) if (!defined $result);
+	
+	foreach my $item (keys %$result)
+	{
+		foreach my $oid (keys %$oids)
+		{
+			if ($item =~ $oids->{$oid})
+			{
+				my $ap_index = substr($item, length($oids->{$oid})+1);
+				my $mac = dec2hex($ap_index);
+				my $ap_info = $list_ap->{$mac};
+				$ap_info->{$oid} = $result->{$item};
+				$list_ap->{$mac} = $ap_info;	
+				# print "$oid:$ap_index:$mac:$item:$result->{$item}\n";
+				last;							
+			}
+		}
+	}
+	
+	# Save ap info into cache for later check service 
+	foreach my $ap_mac (sort keys %$list_ap)
+	{
+		my $ap_info = $list_ap->{$ap_mac};
+		# Get more AP information from  ruckusZDAPConfigTable
+		$ap_info = get_ap_more_detail($ap_info, $np, $snmp_session, $ap_mac);
+		$ap_info->{time} = time;
+		save_cached_ap($np, $np->opts->hostname, $ap_mac, $ap_info);
+	}	
+} 	
+
+sub get_all_aps_old($$)
 {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
@@ -520,7 +687,8 @@ sub get_all_aps($$)
 			}
 		}
 	}
-	$snmp_session->close();
+	# $snmp_session->close();
+	
 	my $total_ap = keys %$list_ap;
 	my $total_user = 0;
 	my $code;
@@ -533,6 +701,8 @@ sub get_all_aps($$)
 	foreach my $ap_mac (sort keys %$list_ap)
 	{
 		my $ap_info = $list_ap->{$ap_mac};
+		$ap_info->{time} = time;
+		save_cached_ap($np, $np->opts->hostname, $ap_mac, $ap_info);
 		$total_user = $total_user + $ap_info->{ruckusZDWLANAPNumSta};
 		if (!$np->opts->noperfdata)
 		{
@@ -742,7 +912,7 @@ if (defined $np->opts->modes)
 	print "wlc: check Virtual Controller state \n";
 	print "list-ap: list access points of WLC \n";
 	print "ap: check Access Point state \n";
-	print "all-aps: check Access Point state \n";
+	# print "all-aps: check Access Point state \n";
 	$np->nagios_exit(OK,'');
 }
 
@@ -829,9 +999,5 @@ elsif ($np->opts->mode eq "list-ap")
 }
 elsif ($np->opts->mode eq "ap")
 {
-	get_ap($np, $snmp_session,$np->opts->mac);
-}
-elsif ($np->opts->mode eq "all-aps")
-{
-	get_all_aps($np, $snmp_session);
+	get_ap_cached($np, $snmp_session,$np->opts->mac);
 }
