@@ -48,10 +48,19 @@ my $OIDS_WLC = {
 };
 
 #   wlsxSwitchAccessPointTable
-my $OIDS_AP = {
+my $OIDS_AP_BSSID = {
 	apIpAddress => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.5',
 	apLocation => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.9',
 };
+
+#  wlsxWlanAPTable
+my $OIDS_AP_INFO = {
+	wlanAPName => '.1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.3',
+	wlanAPIpAddress => '.1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.2',
+	wlanAPModel => '.1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.5',
+	wlanAPLocation => '.1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.14',
+	wlanAPStatus => '.1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.19',
+}
 
 #  wlsxUserTable
 my $OIDS_AP_USER = {
@@ -172,7 +181,6 @@ sub get_wlc($$)
 		push @oids_list, "$oids->{$item}";
 	}
 	my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
-	$snmp_session->close();
 	$np->nagios_die($snmp_session->error()) if (!defined $result);
 	my $wlc_name = $result->{$oids->{wlsxHostname}};
 	my $wlc_model = $result->{$oids->{wlsxModelName}};
@@ -223,6 +231,9 @@ sub get_wlc($$)
 	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
 	$exit_message =~ s/^ *//;
 
+	# Get all APs detail and cached	 
+	get_all_aps($np, $snmp_session);
+	$snmp_session->close();
 	$np->nagios_exit($exit_code, $exit_message);
 }
 
@@ -231,7 +242,7 @@ sub get_list_ap($$)
 	my $np = shift or die;
 	my $snmp_session = shift or die;
 	my @oids_list = ();
-	my $oids = $OIDS_AP;
+	my $oids = $OIDS_AP_INFO;
 	
 	foreach my $item (keys %$oids)
 	{
@@ -239,7 +250,7 @@ sub get_list_ap($$)
 	}
 	
 	my $list_ap = {};
-	# Get AP detail info from   wlsxSwitchAccessPointEntry
+	# Get AP detail info from    wlsxWlanAPTable
 	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
 	$np->nagios_die($snmp_session->error()) if (!defined $result);
 	
@@ -248,7 +259,6 @@ sub get_list_ap($$)
 		
 		my $ap_index = substr($item, length($oids->{apIpAddress})+1);
 		my $ap_info = $list_ap->{$ap_index};
-		
 		if ($item =~ $oids->{apIpAddress})
 		{
 			$ap_info->{ipAddress} = $result->{$item};
@@ -449,7 +459,227 @@ sub get_ap($$$)
 	$np->nagios_exit($exit_code, $exit_message);
 }
 
+sub get_ap_cached($$$)
+{
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	my $ap_mac = shift or die;
+	my @oids_list = ();
+	my $oids = $OIDS_AP_STATE;
+
+	# Get AP State from   wlsxSwitchAccessPointTable
+	my $macdec = hex2dec($ap_mac);
+	foreach my $item (keys %$oids)
+	{
+		push @oids_list, "$oids->{$item}.$macdec";
+	}
+	my $cached_ap = get_cached_ap($np, $np->opts->hostname, $ap_mac);
+	my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
+	$np->nagios_die('wlsxSwitchAccessPointTable:' . $snmp_session->error()) if (!defined $result);
+	my $ap_info = {};
+
+	foreach my $item (keys %$oids)
+	{
+		$ap_info->{$item} = $result->{"$oids->{$item}.$macdec"};
+		# print $item, ":", $ap_info->{$item}, "\n";
+	}
+	$ap_info->{apStatus} = 1;
+	if ($ap_info->{apIpAddress} eq "noSuchInstance")
+	{
+		if (defined $cached_ap)
+		{
+			foreach my $item (keys %$cached_ap)
+			{
+				$ap_info->{$item} = $cached_ap->{$item};	
+			}	
+		}
+		else
+		{
+			foreach my $item (keys %$oids)
+			{
+				$ap_info->{$item} = 0;	
+			}
+		}
+		$ap_info->{apStatus} = 0;
+		$ap_info->{numUser} = 0;
+	}
+	else {
+		#  Get number of user
+		$ap_info->{numUser} = get_ap_users($np, $snmp_session, $ap_mac);
+	}
+	$snmp_session->close();
+	
+	$ap_info->{time} = time;
+	save_cached_ap($np, $np->opts->hostname, $ap_mac, $ap_info);
+	
+	#----------------------------------------
+	# Metrics Summary
+	#----------------------------------------
+	my $ap_status =  $AP_STATUS->{$ap_info->{apStatus}};
+	
+	my $metrics = sprintf("%s [%s] [%s] [%s] - %s - %d users - %d channel noise - %d signal to noise",
+				$ap_mac,
+				$ap_mac,
+				$ap_info->{apLocation},
+				$ap_info->{apIpAddress},
+				$ap_status,
+				$ap_info->{numUser},
+				$ap_info->{apChannelNoise},
+				$ap_info->{apSignalToNoiseRatio},
+	);
+
+	#----------------------------------------
+	# Performance Data
+	#----------------------------------------
+	if (!$np->opts->noperfdata)
+	{
+		$np->add_perfdata(label => "ap_status", 
+				value => $ap_info->{apStatus}, 
+				warning => ":1", 
+				critical => "1:"
+				);
+		$np->add_perfdata(label => "num_user", 
+				value => $ap_info->{numUser}, 
+				# warning => $np->opts->whlscrc, 
+				# critical => $np->opts->chlscrc
+				);		
+		$np->add_perfdata(label => "channel_noise", 
+				value => $ap_info->{apChannelNoise}, 
+				# warning => $np->opts->whlscrc, 
+				# critical => $np->opts->chlscrc
+				);
+		$np->add_perfdata(label => "snr", 
+				value => $ap_info->{apSignalToNoiseRatio}, 
+				);		
+		
+	}	
+	#----------------------------------------
+	# Status Checks
+	#----------------------------------------
+
+	my $code;
+	my $prefix = " ";
+	$np->add_message(OK,'');
+	
+	if (($code = $np->check_threshold(
+			check => $ap_info->{apStatus}, 
+			warning => "~:1", 
+			critical => "1:")) != OK)
+		{
+			$np->add_message($code, $prefix . '[STATUS]');
+		}
+	my ($exit_code, $exit_message) = $np->check_messages();	
+	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
+	$exit_message =~ s/^ *//;
+	$np->nagios_exit($exit_code, $exit_message);
+}
+
 sub get_all_aps($$)
+{
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	# Get AP state
+	my @oids_list = ();
+	my $oids = $OIDS_AP_STATE;
+	
+	foreach my $item (keys %$oids)
+	{
+		push @oids_list, "$oids->{$item}";
+	}
+	
+	my $list_ap = {};
+	# Get AP detail info from   wlsxSwitchAccessPointEntry
+	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
+	$np->nagios_die($snmp_session->error()) if (!defined $result);
+	
+	foreach my $item (keys %$result)
+	{
+		foreach my $oid (keys %$oids)
+		{
+			if ($item =~ $oids->{$oid})
+			{
+				my $ap_index = substr($item, length($oids->{$oid})+1);
+				my $mac = format_mac($ap_index);
+				my $ap_info = $list_ap->{$mac};
+				$ap_info->{$oid} = $result->{$item};
+				$list_ap->{$mac} = $ap_info;	
+				# print "$oid:$item:$mac:$result->{$item}\n";
+				last;				
+			}
+		}
+	}
+	
+	# Get connected users for each BSSID
+	$result = $snmp_session->get_table(-baseoid => $OIDS_AP_USER->{nUserApBSSID});
+	my $num_user = 0;
+	my $total_user = 0;
+	if (defined $result)
+	{
+		
+		foreach my $item (keys %$result)
+		{
+			my $mac = format_mac($result->{$item});
+			my $ap_info = $list_ap->{$mac};
+			$num_user = $ap_info->{numUser};
+			if (!defined $num_user)
+			{
+				$num_user = 0;
+			}
+			$num_user = $num_user + 1;
+			$ap_info->{numUser} = $num_user;
+			$total_user = $total_user + 1;
+			$list_ap->{$mac} = $ap_info;
+		}
+		
+	}
+	
+	
+	
+	if (!$np->opts->noperfdata)
+	{
+		foreach my $ap_mac (sort keys %$list_ap)
+		{
+			my $ap_info = $list_ap->{$ap_mac};
+			
+			if (!defined $ap_info->{numUser})
+			{
+				$ap_info->{numUser} = 0;
+			}
+			if (!defined $ap_info->{apChannelNoise})
+			{
+				$ap_info->{apChannelNoise} = 0;
+			}
+			if (!defined $ap_info->{apSignalToNoiseRatio})
+			{
+				$ap_info->{apSignalToNoiseRatio} = 0;
+			}
+
+			$np->add_perfdata(label => "user_" . $ap_mac, 
+					value => $ap_info->{numUser}, 
+					);
+			$np->add_perfdata(label => "noise_" . $ap_mac, 
+					value => $ap_info->{apChannelNoise}, 
+					);		
+			$np->add_perfdata(label => "snr_" . $ap_mac, 
+					value => $ap_info->{apSignalToNoiseRatio}, 
+					);		
+		}
+	}
+	#----------------------------------------
+	# Status Checks
+	#----------------------------------------
+
+	my $code;
+	my $prefix = " ";
+	$np->add_message(OK,'');
+	my ($exit_code, $exit_message) = $np->check_messages();	
+	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
+	$exit_message =~ s/^ *//;
+	$np->nagios_exit($exit_code, $exit_message);
+	
+}
+
+sub get_all_aps_old($$)
 {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
@@ -812,10 +1042,6 @@ elsif ($np->opts->mode eq "list-ap")
 }
 elsif ($np->opts->mode eq "ap")
 {
-	get_ap($np, $snmp_session,$np->opts->mac);
+	get_ap_cached($np, $snmp_session,$np->opts->mac);
 }
 
-elsif ($np->opts->mode eq "all-aps")
-{
-	get_all_aps($np, $snmp_session);
-}
