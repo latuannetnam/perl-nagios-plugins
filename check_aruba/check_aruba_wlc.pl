@@ -331,8 +331,6 @@ sub get_ap_users($$$)
 			}
 		}
 	}
-	
-	
 	return $num_user;
 }
 
@@ -449,6 +447,128 @@ sub get_ap($$$)
 	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
 	$exit_message =~ s/^ *//;
 	$np->nagios_exit($exit_code, $exit_message);
+}
+
+sub get_all_aps($$)
+{
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	# Get AP state
+	my @oids_list = ();
+	my $oids = $OIDS_AP_STATE;
+	
+	foreach my $item (keys %$oids)
+	{
+		push @oids_list, "$oids->{$item}";
+	}
+	
+	my $list_ap = {};
+	# Get AP detail info from   wlsxSwitchAccessPointEntry
+	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
+	$np->nagios_die($snmp_session->error()) if (!defined $result);
+	
+	foreach my $item (keys %$result)
+	{
+		foreach my $oid (keys %$oids)
+		{
+			if ($item =~ $oids->{$oid})
+			{
+				my $ap_index = substr($item, length($oids->{$oid})+1);
+				my $mac = format_mac($ap_index);
+				my $ap_info = $list_ap->{$mac};
+				if ($item =~ $oids->{apChannelNoise})
+				{
+					$ap_info->{apChannelNoise} = $result->{$item};
+				}
+				elsif ($item =~ $oids->{apSignalToNoiseRatio})
+				{
+					$ap_info->{apSignalToNoiseRatio} = $result->{$item};	
+				}
+				$list_ap->{$mac} = $ap_info;	
+				# print "$oid:$item:$mac:$result->{$item}\n";
+				last;				
+			}
+		}
+	}
+	
+	# Get connected users for each BSSID
+	$result = $snmp_session->get_table(-baseoid => $OIDS_AP_USER->{nUserApBSSID});
+	my $num_user = 0;
+	my $total_user = 0;
+	if (defined $result)
+	{
+		
+		foreach my $item (keys %$result)
+		{
+			my $mac = format_mac($result->{$item});
+			my $ap_info = $list_ap->{$mac};
+			$num_user = $ap_info->{numUser};
+			if (!defined $num_user)
+			{
+				$num_user = 0;
+			}
+			$num_user = $num_user + 1;
+			$ap_info->{numUser} = $num_user;
+			$total_user = $total_user + 1;
+			$list_ap->{$mac} = $ap_info;
+		}
+		
+	}
+	
+	$snmp_session->close();
+	#----------------------------------------
+	# Metrics Summary
+	#----------------------------------------
+	my $total_ap = keys %$list_ap;;
+	my $metrics = sprintf("%d BSSIDs - %d users",
+			$total_ap,
+			$total_user,
+	);
+	#----------------------------------------
+	# Performance Data
+	#----------------------------------------
+	if (!$np->opts->noperfdata)
+	{
+		foreach my $ap_mac (sort keys %$list_ap)
+		{
+			my $ap_info = $list_ap->{$ap_mac};
+			
+			if (!defined $ap_info->{numUser})
+			{
+				$ap_info->{numUser} = 0;
+			}
+			if (!defined $ap_info->{apChannelNoise})
+			{
+				$ap_info->{apChannelNoise} = 0;
+			}
+			if (!defined $ap_info->{apSignalToNoiseRatio})
+			{
+				$ap_info->{apSignalToNoiseRatio} = 0;
+			}
+
+			$np->add_perfdata(label => "user_" . $ap_mac, 
+					value => $ap_info->{numUser}, 
+					);
+			$np->add_perfdata(label => "noise_" . $ap_mac, 
+					value => $ap_info->{apChannelNoise}, 
+					);		
+			$np->add_perfdata(label => "snr_" . $ap_mac, 
+					value => $ap_info->{apSignalToNoiseRatio}, 
+					);		
+		}
+	}
+	#----------------------------------------
+	# Status Checks
+	#----------------------------------------
+
+	my $code;
+	my $prefix = " ";
+	$np->add_message(OK,'');
+	my ($exit_code, $exit_message) = $np->check_messages();	
+	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
+	$exit_message =~ s/^ *//;
+	$np->nagios_exit($exit_code, $exit_message);
+	
 }
 
 #----------------------------------------
@@ -612,6 +732,7 @@ if (defined $np->opts->modes)
 	print "wlc: check Virtual Controller state \n";
 	print "list-ap: list access points of WLC \n";
 	print "ap: check Access Point state \n";
+	print "all-aps: check all Access Points state \n";
 	$np->nagios_exit(OK,'');
 }
 
@@ -699,4 +820,9 @@ elsif ($np->opts->mode eq "list-ap")
 elsif ($np->opts->mode eq "ap")
 {
 	get_ap($np, $snmp_session,$np->opts->mac);
+}
+
+elsif ($np->opts->mode eq "all-aps")
+{
+	get_all_aps($np, $snmp_session);
 }
