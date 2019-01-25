@@ -476,14 +476,7 @@ sub get_all_aps($$)
 				my $ap_index = substr($item, length($oids->{$oid})+1);
 				my $mac = format_mac($ap_index);
 				my $ap_info = $list_ap->{$mac};
-				if ($item =~ $oids->{apChannelNoise})
-				{
-					$ap_info->{apChannelNoise} = $result->{$item};
-				}
-				elsif ($item =~ $oids->{apSignalToNoiseRatio})
-				{
-					$ap_info->{apSignalToNoiseRatio} = $result->{$item};	
-				}
+				$ap_info->{$oid} = $result->{$item};
 				$list_ap->{$mac} = $ap_info;	
 				# print "$oid:$item:$mac:$result->{$item}\n";
 				last;				
@@ -519,7 +512,7 @@ sub get_all_aps($$)
 	#----------------------------------------
 	# Metrics Summary
 	#----------------------------------------
-	my $total_ap = keys %$list_ap;;
+	my $total_ap = keys %$list_ap;
 	my $metrics = sprintf("%d BSSIDs - %d users",
 			$total_ap,
 			$total_user,

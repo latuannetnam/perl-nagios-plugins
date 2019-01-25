@@ -77,12 +77,13 @@ my $OIDS_AP_STATE = {
 	ruckusZDWLANAPMemUtil => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.27.6',
 	ruckusZDWLANAPMemTotal => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.28.6',
 	ruckusZDWLANAPCPUUtil => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.29.6',
-	ruckusZDWLANAPLANStatsRXByte => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.21.6',
-	ruckusZDWLANAPLANStatsRXPkt => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.22.6',
-	ruckusZDWLANAPLANStatsRXPktErr => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.23.6',
-	ruckusZDWLANAPLANStatsTXByte => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.25.6',
-	ruckusZDWLANAPLANStatsTXPkt => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.26.6',
-	ruckusZDWLANAPLANStatsDropped => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.53.6'
+
+	# ruckusZDWLANAPLANStatsRXByte => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.21.6',
+	# ruckusZDWLANAPLANStatsRXPkt => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.22.6',
+	# ruckusZDWLANAPLANStatsRXPktErr => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.23.6',
+	# ruckusZDWLANAPLANStatsTXByte => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.25.6',
+	# ruckusZDWLANAPLANStatsTXPkt => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.26.6',
+	# ruckusZDWLANAPLANStatsDropped => '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.53.6'
 };
 
 
@@ -279,8 +280,6 @@ sub get_list_ap($$)
 					);
 		}
 	}
-
-	
 
 	#----------------------------------------
 	# Print out result
@@ -488,6 +487,100 @@ sub get_ap($$$)
 	$np->nagios_exit($exit_code, $exit_message);
 }
 
+sub get_all_aps($$)
+{
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	my @oids_list = ();
+	my $oids = $OIDS_AP_STATE;
+
+	# Get AP State from  ruckusZDWLANAPTable
+	foreach my $item (keys %$oids)
+	{
+		push @oids_list, "$oids->{$item}";
+	}
+	my $list_ap = {};
+	# Get AP detail info from   wlsxSwitchAccessPointEntry
+	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
+	$np->nagios_die($snmp_session->error()) if (!defined $result);
+	
+	foreach my $item (keys %$result)
+	{
+		foreach my $oid (keys %$oids)
+		{
+			if ($item =~ $oids->{$oid})
+			{
+				my $ap_index = substr($item, length($oids->{$oid})+1);
+				my $mac = dec2hex($ap_index);
+				my $ap_info = $list_ap->{$mac};
+				$ap_info->{$oid} = $result->{$item};
+				$list_ap->{$mac} = $ap_info;	
+				# print "$oid:$ap_index:$mac:$item:$result->{$item}\n";
+				last;							
+			}
+		}
+	}
+	$snmp_session->close();
+	my $total_ap = keys %$list_ap;
+	my $total_user = 0;
+	my $code;
+	my $prefix = " ";
+	$np->add_message(OK,'');
+	#----------------------------------------
+	# Performance Data
+	#----------------------------------------
+	
+	foreach my $ap_mac (sort keys %$list_ap)
+	{
+		my $ap_info = $list_ap->{$ap_mac};
+		$total_user = $total_user + $ap_info->{ruckusZDWLANAPNumSta};
+		if (!$np->opts->noperfdata)
+		{
+			my $ap_status =  $AP_STATUS->{$ap_info->{ruckusZDWLANAPStatus}};
+			$np->add_perfdata(label => "ap_status_" . $ap_mac, 
+					value => $ap_info->{ruckusZDWLANAPStatus}, 
+					warning => ":1", 
+					critical => "1:"
+					);
+			$np->add_perfdata(label => "num_user_" . $ap_mac, 
+					value => $ap_info->{ruckusZDWLANAPNumSta}, 
+					# warning => $np->opts->whlscrc, 
+					# critical => $np->opts->chlscrc
+					);
+			$np->add_perfdata(label => "memory_usage_" . $ap_mac, 
+					value => sprintf("%0.2f",$ap_info->{ruckusZDWLANAPMemUtil}/$ap_info->{ruckusZDWLANAPMemTotal}*100) 
+					);		
+			$np->add_perfdata(label => "cpu_usage_" . $ap_mac, 
+					value => sprintf("%0.2f",$ap_info->{ruckusZDWLANAPCPUUtil}) 
+					);				
+		}
+		#----------------------------------------
+		# Status Checks
+		#----------------------------------------
+		if (($code = $np->check_threshold(
+				check => $ap_info->{ruckusZDWLANAPStatus}, 
+				warning => "~:1", 
+				critical => "1:")) != OK)
+			{
+				$np->add_message($code, $prefix . '[STATUS]');
+			}
+	}	
+	
+	#----------------------------------------
+	# Metrics Summary
+	#----------------------------------------
+	my $metrics = sprintf("%d APs - %d users",
+				$total_ap,
+				$total_user
+	);
+	
+	my ($exit_code, $exit_message) = $np->check_messages();	
+	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
+	$exit_message =~ s/^ *//;
+	$np->nagios_exit($exit_code, $exit_message);
+
+} 	
+
 #----------------------------------------
 # Main program 
 #----------------------------------------
@@ -649,6 +742,7 @@ if (defined $np->opts->modes)
 	print "wlc: check Virtual Controller state \n";
 	print "list-ap: list access points of WLC \n";
 	print "ap: check Access Point state \n";
+	print "all-aps: check Access Point state \n";
 	$np->nagios_exit(OK,'');
 }
 
@@ -736,4 +830,8 @@ elsif ($np->opts->mode eq "list-ap")
 elsif ($np->opts->mode eq "ap")
 {
 	get_ap($np, $snmp_session,$np->opts->mac);
+}
+elsif ($np->opts->mode eq "all-aps")
+{
+	get_all_aps($np, $snmp_session);
 }
