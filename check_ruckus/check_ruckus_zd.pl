@@ -25,6 +25,8 @@ use Data::Dumper;
 
 my $STATEDIR = '/var/tmp';
 
+my $MAX_ENTRIES = 10;
+
 my $OIDS_SYSTEM = {
 	 sysDescr => '.1.3.6.1.2.1.1.1.0',
 	 sysObjectID => '.1.3.6.1.2.1.1.2.0',
@@ -258,10 +260,14 @@ sub get_list_ap($$)
 				$size,
 	);
 	my $index = 1;
-	foreach my $item (keys %$list_ap)
+	foreach my $item (sort keys %$list_ap)
 	{
 		my $ap_info = $list_ap->{$item};
-		print "$index: [$ap_info->{mac}] $ap_info->{apName}  [$ap_info->{location}] $ap_info->{ipAddress}\n";
+		if ($index <= $MAX_ENTRIES)
+		{
+			print "$index: [$ap_info->{mac}] $ap_info->{apName}  [$ap_info->{location}] $ap_info->{ipAddress}\n";
+		}
+		
 		$index = $index + 1;
 		#----------------------------------------
 		# Performance Data

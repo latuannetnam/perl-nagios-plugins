@@ -26,6 +26,8 @@ use Data::Dumper;
 
 my $STATEDIR = '/var/tmp';
 
+my $MAX_ENTRIES = 10;
+
 my $OIDS_SYSTEM = {
 	 sysDescr => '.1.3.6.1.2.1.1.1.0',
 	 sysObjectID => '.1.3.6.1.2.1.1.2.0',
@@ -51,6 +53,7 @@ my $OIDS_AP = {
 	apLocation => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.9',
 };
 
+#  wlsxUserTable
 my $OIDS_AP_USER = {
 	nUserApBSSID => '.1.3.6.1.4.1.14823.2.2.1.4.1.2.1.11'
 };
@@ -272,10 +275,14 @@ sub get_list_ap($$)
 				$size,
 	);
 	my $index = 1;
-	foreach my $item (keys %$list_ap)
+	foreach my $item (sort keys %$list_ap)
 	{
 		my $ap_info = $list_ap->{$item};
-		print "$index: [$ap_info->{mac}] [$ap_info->{location}] $ap_info->{ipAddress}\n";
+		if ($index<= $MAX_ENTRIES)
+		{
+			print "$index: [$ap_info->{mac}] [$ap_info->{location}] $ap_info->{ipAddress}\n";
+		}
+		
 		$index = $index + 1;
 		#----------------------------------------
 		# Performance Data
@@ -311,7 +318,7 @@ sub get_ap_users($$$)
 	my $snmp_session = shift or die;
 	my $ap_mac = shift or die;
 	my $result = $snmp_session->get_table(-baseoid => $OIDS_AP_USER->{nUserApBSSID});
-	$np->nagios_die($snmp_session->error()) if !defined $result;
+	$np->nagios_die("wlsxUserTable:" + $snmp_session->error()) if !defined $result;
 	my $num_user = 0;
 	foreach my $item (keys %$result)
 	{
@@ -339,8 +346,9 @@ sub get_ap($$$)
 	{
 		push @oids_list, "$oids->{$item}.$macdec";
 	}
+	my $cached_ap = get_cached_ap($np, $np->opts->hostname, $ap_mac);
 	my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
-	$np->nagios_die($snmp_session->error()) if (!defined $result);
+	$np->nagios_die('wlsxSwitchAccessPointTable:' + $snmp_session->error()) if (!defined $result);
 	my $ap_info = {};
 
 	foreach my $item (keys %$oids)
@@ -351,20 +359,29 @@ sub get_ap($$$)
 	$ap_info->{apStatus} = 1;
 	if ($ap_info->{apIpAddress} eq "noSuchInstance")
 	{
-
+		if (defined $cached_ap)
+		{
+			foreach my $item (keys %$cached_ap)
+			{
+				$ap_info->{$item} = $cached_ap->{$item};	
+			}	
+		}
+		else
+		{
+			foreach my $item (keys %$oids)
+			{
+				$ap_info->{$item} = 0;	
+			}
+		}
 		$ap_info->{apStatus} = 0;
 		$ap_info->{numUser} = 0;
-		foreach my $item (keys %$oids)
-		{
-			$ap_info->{$item} = 0;	
-		}
 	}
 	else {
 		#  Get number of user
 		$ap_info->{numUser} = get_ap_users($np, $snmp_session, $ap_mac);
 	}
 	$snmp_session->close();
-	my $cached_ap = get_cached_ap($np, $np->opts->hostname, $ap_mac);
+	
 	$ap_info->{time} = time;
 	save_cached_ap($np, $np->opts->hostname, $ap_mac, $ap_info);
 	
