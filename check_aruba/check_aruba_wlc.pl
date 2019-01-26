@@ -350,8 +350,7 @@ sub get_ap_cached($$$)
 	{
 		$np->add_perfdata(label => "ap_status", 
 				value => $ap_info->{wlanAPStatus}, 
-				warning => ":1", 
-				critical => "1:"
+				critical => "~:1"
 				);
 		
 		# perf data for bssid
