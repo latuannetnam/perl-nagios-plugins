@@ -27,6 +27,7 @@ use Data::Dumper;
 my $STATEDIR = '/var/tmp';
 
 my $MAX_ENTRIES = 10;
+my $CACHE_EXPIRED = 6 * 60; # cache expired time in seconds
 
 my $OIDS_SYSTEM = {
 	 sysDescr => '.1.3.6.1.2.1.1.1.0',
@@ -60,25 +61,37 @@ my $OIDS_AP_INFO = {
 	wlanAPModel => '.1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.5',
 	wlanAPLocation => '.1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.14',
 	wlanAPStatus => '.1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.19',
-}
+};
 
 #  wlsxUserTable
 my $OIDS_AP_USER = {
 	nUserApBSSID => '.1.3.6.1.4.1.14823.2.2.1.4.1.2.1.11'
 };
 
-my $OIDS_AP_STATE = {
+my $OIDS_AP_BSSID_STATE = {
+	#  wlsxSwitchAccessPointTable
+	apPhyType => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.6',
 	apIpAddress => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.5',
-	apLocation => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.9',
 	apChannelNoise => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.13',
-	apSignalToNoiseRatio => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.14'
+	apSignalToNoiseRatio => '.1.3.6.1.4.1.14823.2.2.1.1.3.3.1.14',
 };
 
+my $OIDS_AP_BSSID_STATE_EXT = {
+	#  wlsxWlanAPStatsTable
+	wlanAPNumClients => '.1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.2',
+};
+
+
 my $AP_STATUS = {
-	0 => 'Down',
+	2 => 'Down',
 	1 => 'Up',
-	2 => 'Pending',
-	3 => 'Upgrading'
+};
+
+# Channel Physical type
+my $AP_PHY_TYPE = {
+	1 => "dot11a",
+	2 => "dot11b",
+	3 => "dot11g",
 };
 
 #----------------------------------------
@@ -94,7 +107,7 @@ sub sanitize_fname($)
 sub dec2hex($)
 {
 	my $dec = shift or die;
-	my $dec_hex = sprintf "%X-%X-%X-%X-%X-%X", split(/\./ , $dec);
+	my $dec_hex = sprintf "%02X-%02X-%02X-%02X-%02X-%02X", split(/\./ , $dec);
 	return uc $dec_hex;
 }
 
@@ -109,6 +122,13 @@ sub format_mac($)
 {
    my $mac_octet = shift or die;
    return uc sprintf("%s-%s-%s-%s-%s-%s", unpack('H2' x 6, $mac_octet));
+}
+sub get_ap_index_from_oid($)
+{
+	my $oid = shift or die;
+	my ($ap_index) = $oid =~ /(\.[^.]+)$/;
+	$ap_index = substr($ap_index, 1);
+	return $ap_index;
 }
 
 sub get_cached_ap($$$)
@@ -237,73 +257,45 @@ sub get_wlc($$)
 	$np->nagios_exit($exit_code, $exit_message);
 }
 
+
+
 sub get_list_ap($$)
 {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
-	my @oids_list = ();
-	my $oids = $OIDS_AP_INFO;
-	
-	foreach my $item (keys %$oids)
-	{
-		push @oids_list, "$oids->{$item}";
-	}
-	
-	my $list_ap = {};
-	# Get AP detail info from    wlsxWlanAPTable
-	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
-	$np->nagios_die($snmp_session->error()) if (!defined $result);
-	
-	foreach my $item (keys %$result)
-	{
-		
-		my $ap_index = substr($item, length($oids->{apIpAddress})+1);
-		my $ap_info = $list_ap->{$ap_index};
-		if ($item =~ $oids->{apIpAddress})
-		{
-			$ap_info->{ipAddress} = $result->{$item};
-		}
-		elsif ($item =~ $oids->{apLocation})
-		{
-			$ap_info->{location} = $result->{$item};
-		}
-		my $ap_mac = dec2hex($ap_index);
-		$ap_info->{apName} = $ap_mac;
-		$ap_info->{mac} = $ap_mac;
-		
-		
-		$list_ap->{$ap_index} = $ap_info;
-		# print "$ap_index: $result->{$item}\n";
-	}
+	my $index = 0;
+	my $list_ap = get_all_ap_info($np, $snmp_session);
 	$snmp_session->close();
-
-	#----------------------------------------
-	# Metrics Summary
-	#----------------------------------------
-	my $size = keys %$list_ap;
-	my $metrics = sprintf("Total - %d APs",
-				$size,
-	);
-	my $index = 1;
-	foreach my $item (sort keys %$list_ap)
+	foreach my $ap_mac (sort keys %$list_ap)
 	{
-		my $ap_info = $list_ap->{$item};
-		if ($index<= $MAX_ENTRIES)
+		my $ap_info = $list_ap->{$ap_mac};
+		# Only keep AP with status=1
+		if ($ap_info->{ wlanAPStatus}>1)
 		{
-			print "$index: [$ap_info->{mac}] [$ap_info->{location}] $ap_info->{ipAddress}\n";
+			next;
 		}
 		
 		$index = $index + 1;
+		if ($index<= $MAX_ENTRIES)
+		{
+			print "$index: [$ap_mac] [$ap_info->{wlanAPName}] [$ap_info->{wlanAPLocation}] [$ap_info->{wlanAPIpAddress}]\n";
+		}
 		#----------------------------------------
 		# Performance Data
 		#----------------------------------------
 		if (!$np->opts->noperfdata)
 		{
-			$np->add_perfdata(label => "$ap_info->{mac}]$ap_info->{apName}]$ap_info->{ipAddress}", 
+			$np->add_perfdata(label => "$ap_mac]$ap_info->{wlanAPName}]$ap_info->{wlanAPIpAddress}", 
 					value => 1, 
 					);
 		}
 	}
+	#----------------------------------------
+	# Metrics Summary
+	#----------------------------------------
+	my $metrics = sprintf("Total - %d APs",
+				$index,
+	);
 
 	#----------------------------------------
 	# Print out result
@@ -350,7 +342,7 @@ sub get_ap($$$)
 	my $snmp_session = shift or die;
 	my $ap_mac = shift or die;
 	my @oids_list = ();
-	my $oids = $OIDS_AP_STATE;
+	my $oids = $OIDS_AP_BSSID_STATE;
 
 	# Get AP State from   wlsxSwitchAccessPointTable
 	my $macdec = hex2dec($ap_mac);
@@ -464,95 +456,73 @@ sub get_ap_cached($$$)
 	my $np = shift or die;
 	my $snmp_session = shift or die;
 	my $ap_mac = shift or die;
-	my @oids_list = ();
-	my $oids = $OIDS_AP_STATE;
-
-	# Get AP State from   wlsxSwitchAccessPointTable
-	my $macdec = hex2dec($ap_mac);
-	foreach my $item (keys %$oids)
+	my $ap_info = get_cached_ap($np, $np->opts->hostname, $ap_mac);
+	# print "Get cache for:$ap_mac \n";
+	if (!defined $ap_info)
 	{
-		push @oids_list, "$oids->{$item}.$macdec";
+		$np->add_message(OK,'');
+		$np->nagios_exit(OK, 'No cached');
 	}
-	my $cached_ap = get_cached_ap($np, $np->opts->hostname, $ap_mac);
-	my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
-	$np->nagios_die('wlsxSwitchAccessPointTable:' . $snmp_session->error()) if (!defined $result);
-	my $ap_info = {};
-
-	foreach my $item (keys %$oids)
+	else
 	{
-		$ap_info->{$item} = $result->{"$oids->{$item}.$macdec"};
-		# print $item, ":", $ap_info->{$item}, "\n";
-	}
-	$ap_info->{apStatus} = 1;
-	if ($ap_info->{apIpAddress} eq "noSuchInstance")
-	{
-		if (defined $cached_ap)
+		my $time_delta = time - $ap_info->{time};
+		# print "time delta:$time_delta\n";
+		if ($time_delta > $CACHE_EXPIRED)
 		{
-			foreach my $item (keys %$cached_ap)
-			{
-				$ap_info->{$item} = $cached_ap->{$item};	
-			}	
+			$ap_info->{wlanAPStatus} = 2;
 		}
-		else
-		{
-			foreach my $item (keys %$oids)
-			{
-				$ap_info->{$item} = 0;	
-			}
-		}
-		$ap_info->{apStatus} = 0;
-		$ap_info->{numUser} = 0;
 	}
-	else {
-		#  Get number of user
-		$ap_info->{numUser} = get_ap_users($np, $snmp_session, $ap_mac);
-	}
-	$snmp_session->close();
-	
-	$ap_info->{time} = time;
-	save_cached_ap($np, $np->opts->hostname, $ap_mac, $ap_info);
-	
-	#----------------------------------------
-	# Metrics Summary
-	#----------------------------------------
-	my $ap_status =  $AP_STATUS->{$ap_info->{apStatus}};
-	
-	my $metrics = sprintf("%s [%s] [%s] [%s] - %s - %d users - %d channel noise - %d signal to noise",
-				$ap_mac,
-				$ap_mac,
-				$ap_info->{apLocation},
-				$ap_info->{apIpAddress},
-				$ap_status,
-				$ap_info->{numUser},
-				$ap_info->{apChannelNoise},
-				$ap_info->{apSignalToNoiseRatio},
-	);
 
 	#----------------------------------------
 	# Performance Data
 	#----------------------------------------
+	my $num_user = 0;
 	if (!$np->opts->noperfdata)
 	{
 		$np->add_perfdata(label => "ap_status", 
-				value => $ap_info->{apStatus}, 
+				value => $ap_info->{wlanAPStatus}, 
 				warning => ":1", 
 				critical => "1:"
 				);
-		$np->add_perfdata(label => "num_user", 
-				value => $ap_info->{numUser}, 
-				# warning => $np->opts->whlscrc, 
-				# critical => $np->opts->chlscrc
+		
+		# perf data for bssid
+		my $ap_bssid = $ap_info->{ap_bssid};
+		foreach my $bssid (sort keys %$ap_bssid)
+		{
+			my $app_bssid_info = $ap_bssid->{$bssid};
+			my $phy_type = $AP_PHY_TYPE->{$app_bssid_info->{apPhyType}};
+			$num_user = $num_user + $app_bssid_info->{wlanAPNumClients};
+			$np->add_perfdata(label => "num_user_" . $phy_type, 
+				value => $app_bssid_info->{wlanAPNumClients}, 
 				);		
-		$np->add_perfdata(label => "channel_noise", 
-				value => $ap_info->{apChannelNoise}, 
-				# warning => $np->opts->whlscrc, 
-				# critical => $np->opts->chlscrc
-				);
-		$np->add_perfdata(label => "snr", 
-				value => $ap_info->{apSignalToNoiseRatio}, 
+			$np->add_perfdata(label => "channel_noise_" . $phy_type, 
+					value => $app_bssid_info->{apChannelNoise}, 
+					);
+			$np->add_perfdata(label => "snr_" . $phy_type, 
+					value => $app_bssid_info->{apSignalToNoiseRatio}, 
+					);		
+		}
+		# Total users of AP
+		$np->add_perfdata(label => "num_user", 
+				value => $num_user, 
 				);		
 		
 	}	
+
+	#----------------------------------------
+	# Metrics Summary
+	#----------------------------------------
+	my $ap_status =  $AP_STATUS->{$ap_info->{wlanAPStatus}};
+	my $metrics = sprintf("%s [%s] [%s] [%s] - %s - %d users",
+				$ap_info->{wlanAPName},
+				$ap_mac,
+				$ap_info->{wlanAPLocation},
+				$ap_info->{wlanAPIpAddress},
+				$ap_status,
+				$num_user,
+	);
+
+	
 	#----------------------------------------
 	# Status Checks
 	#----------------------------------------
@@ -562,9 +532,9 @@ sub get_ap_cached($$$)
 	$np->add_message(OK,'');
 	
 	if (($code = $np->check_threshold(
-			check => $ap_info->{apStatus}, 
-			warning => "~:1", 
-			critical => "1:")) != OK)
+			check => $ap_info->{wlanAPStatus}, 
+			# warning => "~:1", 
+			critical => "~:1")) != OK)
 		{
 			$np->add_message($code, $prefix . '[STATUS]');
 		}
@@ -572,15 +542,17 @@ sub get_ap_cached($$$)
 	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
 	$exit_message =~ s/^ *//;
 	$np->nagios_exit($exit_code, $exit_message);
+	
+	
+	
 }
 
-sub get_all_aps($$)
+sub get_all_ap_info($$)
 {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
-	# Get AP state
 	my @oids_list = ();
-	my $oids = $OIDS_AP_STATE;
+	my $oids = $OIDS_AP_INFO;
 	
 	foreach my $item (keys %$oids)
 	{
@@ -588,7 +560,7 @@ sub get_all_aps($$)
 	}
 	
 	my $list_ap = {};
-	# Get AP detail info from   wlsxSwitchAccessPointEntry
+	# Get AP detail info from    wlsxWlanAPTable
 	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
 	$np->nagios_die($snmp_session->error()) if (!defined $result);
 	
@@ -599,84 +571,165 @@ sub get_all_aps($$)
 			if ($item =~ $oids->{$oid})
 			{
 				my $ap_index = substr($item, length($oids->{$oid})+1);
-				my $mac = format_mac($ap_index);
+				my $mac = dec2hex($ap_index);
 				my $ap_info = $list_ap->{$mac};
-				$ap_info->{$oid} = $result->{$item};
+				my $value = $result->{$item};
+				if ($value =~ /Not Available/)
+				{
+					$value = "";
+				}
+				if ($oid eq "wlanAPName")
+				{
+					$value = $value =~ s/:/-/rg;
+
+				}
+				$ap_info->{$oid} = uc $value;
 				$list_ap->{$mac} = $ap_info;	
+				# print "$oid:$ap_index:$mac:$item:$ap_info->{$oid}\n";
+				last;							
+			}
+		}
+	}
+	return $list_ap;
+}
+
+sub get_all_ap_bssid_state($$)
+{
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	my @oids_list = ();
+	my $oids = $OIDS_AP_BSSID_STATE;
+	
+	foreach my $item (keys %$oids)
+	{
+		push @oids_list, "$oids->{$item}";
+	}
+
+	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
+	$np->nagios_die($snmp_session->error()) if (!defined $result);
+	my $list_ap_bssid = {};
+	foreach my $item (keys %$result)
+	{
+		foreach my $oid (keys %$oids)
+		{
+			if ($item =~ $oids->{$oid})
+			{
+				my $ap_index = substr($item, length($oids->{$oid})+1);
+				my $mac = dec2hex($ap_index);
+				my $ap_info = $list_ap_bssid->{$mac};
+				$ap_info->{$oid} = $result->{$item};
+				$list_ap_bssid->{$mac} = $ap_info;	
 				# print "$oid:$item:$mac:$result->{$item}\n";
 				last;				
 			}
 		}
 	}
+	return $list_ap_bssid;
+}
+
+sub get_all_ap_bssid_state_ext($$)
+{
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	my @oids_list = ();
+	my $oids = $OIDS_AP_BSSID_STATE_EXT;
 	
-	# Get connected users for each BSSID
-	$result = $snmp_session->get_table(-baseoid => $OIDS_AP_USER->{nUserApBSSID});
-	my $num_user = 0;
-	my $total_user = 0;
-	if (defined $result)
+	foreach my $item (keys %$oids)
 	{
-		
-		foreach my $item (keys %$result)
-		{
-			my $mac = format_mac($result->{$item});
-			my $ap_info = $list_ap->{$mac};
-			$num_user = $ap_info->{numUser};
-			if (!defined $num_user)
-			{
-				$num_user = 0;
-			}
-			$num_user = $num_user + 1;
-			$ap_info->{numUser} = $num_user;
-			$total_user = $total_user + 1;
-			$list_ap->{$mac} = $ap_info;
-		}
-		
+		push @oids_list, "$oids->{$item}";
 	}
-	
-	
-	
-	if (!$np->opts->noperfdata)
+
+	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
+	$np->nagios_die($snmp_session->error()) if (!defined $result);
+	my $list_ap_bssid = {};
+	foreach my $item (keys %$result)
 	{
-		foreach my $ap_mac (sort keys %$list_ap)
+		foreach my $oid (keys %$oids)
 		{
-			my $ap_info = $list_ap->{$ap_mac};
+			if ($item =~ $oids->{$oid})
+			{
+				# $ap_index: AP_MAC.RADIO_NUMBER:BSSID
+				my $ap_index = substr($item, length($oids->{$oid})+1);
+				my @octects = split(/\./,$ap_index);
+				my @mac_arr = @octects[0..5];
+				my $mac = join("-", map { sprintf "%02X", $_ } @mac_arr);
+				my @bssid_arr = @octects[7..12];
+				my $bssid = join("-", map { sprintf "%02X", $_ } @bssid_arr);
+				my $ap_info = $list_ap_bssid->{$bssid};
+				$ap_info->{$oid} = $result->{$item};
+				$ap_info->{ap_mac} = $mac;
+				$list_ap_bssid->{$bssid} = $ap_info;
+				# print "$oid:$ap_index:$mac:$bssid:$result->{$item}\n";
+				last;				
+			}
+		}
+	}
+	return $list_ap_bssid;
+}
+
+
+sub get_ap_mac_from_list($$$)
+{
+	my $list = shift or die;
+	my $key = shift or die;
+	my $value = shift or die;
+	my @list_mac = ();
+	foreach my $ap_mac (keys %$list) {
+		my $ap_info = $list->{$ap_mac};
+		if ($ap_info->{$key} eq $value)
+		{
+			push @list_mac, $ap_mac;
+		}
 			
-			if (!defined $ap_info->{numUser})
-			{
-				$ap_info->{numUser} = 0;
-			}
-			if (!defined $ap_info->{apChannelNoise})
-			{
-				$ap_info->{apChannelNoise} = 0;
-			}
-			if (!defined $ap_info->{apSignalToNoiseRatio})
-			{
-				$ap_info->{apSignalToNoiseRatio} = 0;
-			}
-
-			$np->add_perfdata(label => "user_" . $ap_mac, 
-					value => $ap_info->{numUser}, 
-					);
-			$np->add_perfdata(label => "noise_" . $ap_mac, 
-					value => $ap_info->{apChannelNoise}, 
-					);		
-			$np->add_perfdata(label => "snr_" . $ap_mac, 
-					value => $ap_info->{apSignalToNoiseRatio}, 
-					);		
-		}
 	}
-	#----------------------------------------
-	# Status Checks
-	#----------------------------------------
+	return @list_mac;
+}
+sub get_all_aps($$)
+{
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	# Get AP state
+	# Get AP detail info from    wlsxWlanAPStatsTable
+	my $list_ap_bssid = get_all_ap_bssid_state($np, $snmp_session);
+	my $list_ap = get_all_ap_info($np, $snmp_session);
+	my $list_ap_bssid_ext = get_all_ap_bssid_state_ext($np, $snmp_session);
+	for my $ap_mac (sort keys %$list_ap)
+	{
+		my $ap_info = $list_ap->{$ap_mac};
+		
+		# Only keep AP with status=1
+		if ($ap_info->{ wlanAPStatus}>1)
+		{
+			next;
+		}
+		# print "$ap_mac:$ap_info->{wlanAPName}:$ap_info->{wlanAPIpAddress}\n";
+		# Get all bssid state matching ap ip address
+		my $ip_address = $ap_info->{wlanAPIpAddress};
+		my @list_mac = get_ap_mac_from_list($list_ap_bssid, "apIpAddress", $ip_address);
+		my $ap_bssid = {};
+		foreach my $bssid (@list_mac)
+		{
+			my $ap_bssid_info = $list_ap_bssid->{$bssid};
+			$ap_bssid->{$bssid} = $ap_bssid_info;
+			# print "$bssid:$ap_bssid_info->{apPhyType}:$ap_bssid_info->{apChannelNoise}\n";
+		}
+		# Get all bssid ext state matching ap mac
+		@list_mac = get_ap_mac_from_list($list_ap_bssid_ext, "ap_mac", $ap_mac);
+		my $ap_bssid_ext = {};
+		foreach my $bssid (@list_mac)
+		{
+			my $ap_bssid_info_ext = $list_ap_bssid_ext->{$bssid};
+			my $ap_bssid_info = $ap_bssid->{$bssid};
+			# Merge 2 ap bssid
+			$ap_bssid_ext->{$bssid} = {%$ap_bssid_info, %$ap_bssid_info_ext} ;
+			# print "$bssid:$$ap_bssid_ext->{$bssid}->{wlanAPNumClients}\n";
+		}
+		
+		$ap_info->{ap_bssid} = $ap_bssid_ext;
+		$ap_info->{time} = time;
+		save_cached_ap($np, $np->opts->hostname, $ap_mac, $ap_info);
+	}
 
-	my $code;
-	my $prefix = " ";
-	$np->add_message(OK,'');
-	my ($exit_code, $exit_message) = $np->check_messages();	
-	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
-	$exit_message =~ s/^ *//;
-	$np->nagios_exit($exit_code, $exit_message);
-	
 }
 
 sub get_all_aps_old($$)
@@ -685,7 +738,7 @@ sub get_all_aps_old($$)
 	my $snmp_session = shift or die;
 	# Get AP state
 	my @oids_list = ();
-	my $oids = $OIDS_AP_STATE;
+	my $oids = $OIDS_AP_BSSID_STATE;
 	
 	foreach my $item (keys %$oids)
 	{

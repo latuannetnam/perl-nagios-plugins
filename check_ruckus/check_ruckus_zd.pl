@@ -110,7 +110,7 @@ sub sanitize_fname($)
 sub dec2hex($)
 {
 	my $dec = shift or die;
-	my $dec_hex = sprintf "%X-%X-%X-%X-%X-%X", split(/\./ , $dec);
+	my $dec_hex = sprintf "%02X-%02X-%02X-%02X-%02X-%02X", split(/\./ , $dec);
 	return uc $dec_hex;
 }
 
@@ -271,7 +271,7 @@ sub get_list_ap($$)
 		my $ap_info = $list_ap->{$item};
 		if ($index <= $MAX_ENTRIES)
 		{
-			print "$index: [$ap_info->{mac}] $ap_info->{apName}  [$ap_info->{location}] $ap_info->{ipAddress}\n";
+			print "$index: [$ap_info->{mac}] [$ap_info->{apName}]  [$ap_info->{location}] [$ap_info->{ipAddress}]\n";
 		}
 		
 		$index = $index + 1;
@@ -670,6 +670,7 @@ sub get_all_aps($$)
 					$ap_info->{$oid} = $result->{$item};
 				}
 				# print $ap_index, ":", $oid, ":", $ap_info->{$oid}, "\n";
+				last;
 			}
 		}
 		$list_ap_index->{$ap_index} = $ap_info;
