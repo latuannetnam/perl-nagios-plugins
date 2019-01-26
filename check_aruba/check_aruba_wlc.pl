@@ -716,7 +716,17 @@ sub get_all_aps($$)
 		foreach my $bssid (@list_mac)
 		{
 			my $ap_bssid_info = $list_ap_bssid->{$bssid};
-			$ap_bssid->{$bssid} = $ap_bssid_info;
+			my $ap_bssid_info_ext = $list_ap_bssid_ext->{$bssid};
+			# Merge 2 ap bssid
+			if (defined $ap_bssid_info_ext)
+			{
+				$ap_bssid->{$bssid} = {%$ap_bssid_info, %$ap_bssid_info_ext} ;	
+			}
+			else
+			{
+				$ap_bssid->{$bssid} = $ap_bssid_info;
+			}
+			
 			# print "$bssid:$ap_bssid_info->{apPhyType}:$ap_bssid_info->{apChannelNoise}\n";
 		}
 		# Get all bssid ext state matching ap mac
@@ -727,7 +737,15 @@ sub get_all_aps($$)
 			my $ap_bssid_info_ext = $list_ap_bssid_ext->{$bssid};
 			my $ap_bssid_info = $ap_bssid->{$bssid};
 			# Merge 2 ap bssid
-			$ap_bssid_ext->{$bssid} = {%$ap_bssid_info, %$ap_bssid_info_ext} ;
+			if (defined $ap_bssid_info)
+			{
+				$ap_bssid_ext->{$bssid} = {%$ap_bssid_info, %$ap_bssid_info_ext} ;
+			}
+			else
+			{
+				$ap_bssid_ext->{$bssid} = $ap_bssid_info_ext;
+			}
+			
 			# print "$bssid:$$ap_bssid_ext->{$bssid}->{wlanAPNumClients}\n";
 		}
 		
