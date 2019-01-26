@@ -314,143 +314,6 @@ sub get_list_ap($$)
 
 }
 
-sub get_ap_users($$$)
-{
-	my $np = shift or die;
-	my $snmp_session = shift or die;
-	my $ap_mac = shift or die;
-	my $result = $snmp_session->get_table(-baseoid => $OIDS_AP_USER->{nUserApBSSID});
-	my $num_user = 0;
-	if (defined $result)
-	{
-	foreach my $item (keys %$result)
-		{
-			my $mac = format_mac($result->{$item});
-			if ($mac eq $ap_mac)
-			{
-				$num_user = $num_user + 1; 
-				# print "$item:$mac:$ap_mac\n";	
-			}
-		}
-	}
-	return $num_user;
-}
-
-sub get_ap($$$)
-{
-	my $np = shift or die;
-	my $snmp_session = shift or die;
-	my $ap_mac = shift or die;
-	my @oids_list = ();
-	my $oids = $OIDS_AP_BSSID_STATE;
-
-	# Get AP State from   wlsxSwitchAccessPointTable
-	my $macdec = hex2dec($ap_mac);
-	foreach my $item (keys %$oids)
-	{
-		push @oids_list, "$oids->{$item}.$macdec";
-	}
-	my $cached_ap = get_cached_ap($np, $np->opts->hostname, $ap_mac);
-	my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
-	$np->nagios_die('wlsxSwitchAccessPointTable:' . $snmp_session->error()) if (!defined $result);
-	my $ap_info = {};
-
-	foreach my $item (keys %$oids)
-	{
-		$ap_info->{$item} = $result->{"$oids->{$item}.$macdec"};
-		# print $item, ":", $ap_info->{$item}, "\n";
-	}
-	$ap_info->{apStatus} = 1;
-	if ($ap_info->{apIpAddress} eq "noSuchInstance")
-	{
-		if (defined $cached_ap)
-		{
-			foreach my $item (keys %$cached_ap)
-			{
-				$ap_info->{$item} = $cached_ap->{$item};	
-			}	
-		}
-		else
-		{
-			foreach my $item (keys %$oids)
-			{
-				$ap_info->{$item} = 0;	
-			}
-		}
-		$ap_info->{apStatus} = 0;
-		$ap_info->{numUser} = 0;
-	}
-	else {
-		#  Get number of user
-		$ap_info->{numUser} = get_ap_users($np, $snmp_session, $ap_mac);
-	}
-	$snmp_session->close();
-	
-	$ap_info->{time} = time;
-	save_cached_ap($np, $np->opts->hostname, $ap_mac, $ap_info);
-	
-	#----------------------------------------
-	# Metrics Summary
-	#----------------------------------------
-	my $ap_status =  $AP_STATUS->{$ap_info->{apStatus}};
-	
-	my $metrics = sprintf("%s [%s] [%s] [%s] - %s - %d users - %d channel noise - %d signal to noise",
-				$ap_mac,
-				$ap_mac,
-				$ap_info->{apLocation},
-				$ap_info->{apIpAddress},
-				$ap_status,
-				$ap_info->{numUser},
-				$ap_info->{apChannelNoise},
-				$ap_info->{apSignalToNoiseRatio},
-	);
-
-	#----------------------------------------
-	# Performance Data
-	#----------------------------------------
-	if (!$np->opts->noperfdata)
-	{
-		$np->add_perfdata(label => "ap_status", 
-				value => $ap_info->{apStatus}, 
-				warning => ":1", 
-				critical => "1:"
-				);
-		$np->add_perfdata(label => "num_user", 
-				value => $ap_info->{numUser}, 
-				# warning => $np->opts->whlscrc, 
-				# critical => $np->opts->chlscrc
-				);		
-		$np->add_perfdata(label => "channel_noise", 
-				value => $ap_info->{apChannelNoise}, 
-				# warning => $np->opts->whlscrc, 
-				# critical => $np->opts->chlscrc
-				);
-		$np->add_perfdata(label => "snr", 
-				value => $ap_info->{apSignalToNoiseRatio}, 
-				);		
-		
-	}	
-	#----------------------------------------
-	# Status Checks
-	#----------------------------------------
-
-	my $code;
-	my $prefix = " ";
-	$np->add_message(OK,'');
-	
-	if (($code = $np->check_threshold(
-			check => $ap_info->{apStatus}, 
-			warning => "~:1", 
-			critical => "1:")) != OK)
-		{
-			$np->add_message($code, $prefix . '[STATUS]');
-		}
-	my ($exit_code, $exit_message) = $np->check_messages();	
-	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
-	$exit_message =~ s/^ *//;
-	$np->nagios_exit($exit_code, $exit_message);
-}
-
 sub get_ap_cached($$$)
 {
 	my $np = shift or die;
@@ -496,17 +359,23 @@ sub get_ap_cached($$$)
 		foreach my $bssid (sort keys %$ap_bssid)
 		{
 			my $app_bssid_info = $ap_bssid->{$bssid};
-			my $phy_type = $AP_PHY_TYPE->{$app_bssid_info->{apPhyType}};
+			my $phy_type_int = $app_bssid_info->{apPhyType};
 			$num_user = $num_user + $app_bssid_info->{wlanAPNumClients};
-			$np->add_perfdata(label => "num_user_" . $phy_type, 
-				value => $app_bssid_info->{wlanAPNumClients}, 
-				);		
-			$np->add_perfdata(label => "channel_noise_" . $phy_type, 
-					value => $app_bssid_info->{apChannelNoise}, 
-					);
-			$np->add_perfdata(label => "snr_" . $phy_type, 
-					value => $app_bssid_info->{apSignalToNoiseRatio}, 
+			if (defined $phy_type_int)
+			{
+				my $phy_type = $AP_PHY_TYPE->{$phy_type_int};
+				
+				$np->add_perfdata(label => "num_user_" . $phy_type, 
+					value => $app_bssid_info->{wlanAPNumClients}, 
 					);		
+				$np->add_perfdata(label => "channel_noise_" . $phy_type, 
+						value => $app_bssid_info->{apChannelNoise}, 
+						);
+				$np->add_perfdata(label => "snr_" . $phy_type, 
+						value => $app_bssid_info->{apSignalToNoiseRatio}, 
+						);		
+			}
+			
 		}
 		# Total users of AP
 		$np->add_perfdata(label => "num_user", 
