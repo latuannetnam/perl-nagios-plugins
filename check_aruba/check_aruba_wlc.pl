@@ -460,8 +460,14 @@ sub get_ap_cached($$$)
 	# print "Get cache for:$ap_mac \n";
 	if (!defined $ap_info)
 	{
-		$np->add_message(OK,'');
-		$np->nagios_exit(OK, 'No cached');
+		# Renew cache
+		get_all_aps($np, $snmp_session);
+		$snmp_session->close();
+		$ap_info = get_cached_ap($np, $np->opts->hostname, $ap_mac);
+		if (!defined $ap_info)
+		{
+			$np->nagios_exit(3, "Can not get cached");
+		}
 	}
 	else
 	{
