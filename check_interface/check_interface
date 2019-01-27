@@ -26,6 +26,7 @@ use Net::SNMP;
 use Data::Dumper;
 
 my $STATEDIR = '/var/tmp';
+my $MAX_ENTRIES = 10;
 
 my $OIDS;
 
@@ -119,7 +120,7 @@ sub compute_realspeed
 	return $ifinfo->{ifSpeed};
 }
 
-sub get_iflist($$)
+sub get_iflist_old($$)
 {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
@@ -137,24 +138,109 @@ sub get_iflist($$)
 	return $iflist;
 }
 
-sub get_iflist_new($$)
+sub get_ifid_from_oid($)
+{
+	my $oid = shift or die;
+	my ($ifid) = $oid =~ /(\.[^.]+)$/;
+	$ifid = substr($ifid, 1);
+	return $ifid;
+}
+
+sub get_iflist($$)
 {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
+	my @oids_list = ();
+	my $oids = $OIDS_INTERFACE_DESC;
+	
+	foreach my $item (keys %$oids)
+	{
+		push @oids_list, "$oids->{$item}";
+	}
 	my $iflist = {};
 
-	my $result = $snmp_session->get_table(-baseoid => $OIDS->{ifIndex});
-	$np->nagios_die($snmp_session->error()) if !defined $result;
-	
-	foreach my $ifid (keys %$result)
+	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
+	$np->nagios_die($snmp_session->error()) if (!defined $result);
+	$snmp_session->close();
+	foreach my $item (keys %$result)
 	{
-		my $ifinfo = {};
-		$ifinfo->{ifName} = $result->{$ifid};
-		$iflist->{$ifid} = $ifinfo;
+		foreach my $oid (keys %$oids)
+		{
+			if ($item =~ $oids->{$oid})
+			{
+				my $ifid = get_ifid_from_oid($item);
+				my $value = $result->{$item};
+				my $if_info = $iflist->{$ifid};
+
+				if ($value eq "")
+				{
+					$value = "None";
+				}
+
+				$if_info->{$oid} = $value;
+				$iflist->{$ifid} = $if_info;	
+				# print "$oid:$ifid:$if_info->{$oid}\n";
+				last;							
+			}
+		}
 	}
 
-	#@$iflist = sort @$iflist;
-	return $iflist;
+	my $index = 0;
+	foreach my $ifid (sort keys %$iflist)
+	{
+		my $if_info = $iflist->{$ifid};
+		$index = $index + 1;
+		if (!defined $if_info->{ifAlias})
+		{
+			$if_info->{ifAlias} = "None";
+		}
+		if ($if_info->{ifName} eq "None")
+		{
+			$if_info->{ifName} = $if_info->{ifDescr};
+		}
+		# Satinize alias
+		$if_info->{ifAlias} =~ s/\[//gi;;
+		$if_info->{ifAlias} =~ s/\]//gi;;
+		$if_info->{ifAlias} =~ s/\=/-/gi;;
+		# print "ifName:$if_info->{ifName}\n";
+		# print "ifDescr:$if_info->{ifDescr}\n";
+		# print "ifAlias:$if_info->{ifAlias}\n";
+		if ($index<= $MAX_ENTRIES)
+		{
+			print "$index: [$if_info->{ifName}] [$if_info->{ifDescr}] [$if_info->{ifAlias}]\n";
+		}
+		#----------------------------------------
+		# Performance Data
+		#----------------------------------------
+		if (!$np->opts->noperfdata)
+		{
+			$np->add_perfdata(label => "$if_info->{ifName}]$if_info->{ifAlias}", 
+					value => 1, 
+					);
+		}
+	}
+	#----------------------------------------
+	# Metrics Summary
+	#----------------------------------------
+	my $metrics = sprintf("Total - %d interfaces",
+				$index,
+	);
+
+	#----------------------------------------
+	# Print out result
+	#----------------------------------------
+	my $code;
+
+	my $prefix = " ";
+
+	$np->add_message(OK,'');
+	my ($exit_code, $exit_message) = $np->check_messages();
+
+	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
+	$exit_message =~ s/^ *//;
+
+	$np->nagios_exit($exit_code, $exit_message);
+
 }
 
 
@@ -571,27 +657,9 @@ $np->nagios_die($snmp_error) if (!defined $snmp_session);
 
 if (defined $np->opts->list)
 {
-	foreach my $if (@{get_iflist($np, $snmp_session)})
-	{
-		print " $if\n";
-	}
-	print "\n";
-	$snmp_session->close();
-	$np->add_message(OK,'');
-	$np->nagios_exit(0, "");
+	get_iflist($np, $snmp_session);	
 }
 
-# if (defined $np->opts->list)
-# {
-# 	my $iflist = get_iflist($np, $snmp_session);
-# 	foreach my $ifid (sort keys %$iflist) {
-# 		print "$ifid $iflist->{$ifid}->{ifName}\n";
-# 	}
-# 	print "\n";
-# 	$snmp_session->close();
-# 	$np->add_message(OK,'');
-# 	$np->nagios_exit(0, "");
-# }
 
 #----------------------------------------
 # Cache Directory
