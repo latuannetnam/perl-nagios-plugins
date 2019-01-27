@@ -199,12 +199,14 @@ sub get_iflist($$)
 			$if_info->{ifName} = $if_info->{ifDescr};
 		}
 		# Satinize alias
-		$if_info->{ifAlias} =~ s/\[//gi;;
-		$if_info->{ifAlias} =~ s/\]//gi;;
+		$if_info->{ifAlias} =~ s/\[/ /gi;;
+		$if_info->{ifAlias} =~ s/\]/ /gi;;
 		$if_info->{ifAlias} =~ s/\=/-/gi;;
-		# print "ifName:$if_info->{ifName}\n";
-		# print "ifDescr:$if_info->{ifDescr}\n";
-		# print "ifAlias:$if_info->{ifAlias}\n";
+		# Satinize ifName
+		$if_info->{ifName} =~ s/\[/ /gi;;
+		$if_info->{ifName} =~ s/\]/ /gi;;
+		$if_info->{ifName} =~ s/\=/-/gi;;
+		
 		if ($index<= $MAX_ENTRIES)
 		{
 			print "$index: [$if_info->{ifName}] [$if_info->{ifDescr}] [$if_info->{ifAlias}]\n";
