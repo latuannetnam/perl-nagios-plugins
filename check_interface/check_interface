@@ -806,7 +806,7 @@ if ($ifName =~ "noSuchObject")
 {
 	$ifName = $ifinfo->{ifDesc};
 }
-my $prefix = " $ifinfo->{ifName} (alias: $ifinfo->{ifAlias}) -";
+my $prefix = " $ifName (alias: $ifinfo->{ifAlias}) -";
 
 $np->add_message(OK,'');
 
