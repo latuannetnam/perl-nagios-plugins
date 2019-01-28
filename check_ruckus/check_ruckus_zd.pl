@@ -107,6 +107,15 @@ sub sanitize_fname($)
 	return $name;
 }
 
+# Satinize alias
+sub sanitize_alias($)
+{
+	my $name = shift;
+	$name =~ s/\[/ /gi;
+	$name =~ s/\]/ /gi;
+	$name =~ s/\=/-/gi;
+	return $name;
+}
 sub dec2hex($)
 {
 	my $dec = shift or die;
@@ -147,12 +156,16 @@ sub get_wlc($$)
 	my $wlc_num_rougue_user = $result->{$oids->{ruckusZDSystemStatsNumRogue}};
 	my $wcl_memory_usage = $result->{$oids->{ruckusZDSystemStatsMemoryUtil}};
 	my $wcl_cpu_usage = $result->{$oids->{ruckusZDSystemStatsCPUUtil}};
+	# Get all aps detail and cache result
+	my $wlc_num_connected_ap = get_all_aps($np, $snmp_session);
+
 	#----------------------------------------
 	# Metrics Summary
 	#----------------------------------------
-	my $metrics = sprintf("%s [%s] - %d APs - %d users - %d rougue users - %d%% RAM - %d%% CPU",
+	my $metrics = sprintf("%s [%s] - %d APs up/%d APs - %d users - %d rougue users - %d%% RAM - %d%% CPU",
 				$wlc_name,
 				$wlc_model,
+				$wlc_num_connected_ap,
 				$wlc_num_ap,
 				$wlc_num_user,
 				$wlc_num_rougue_user,
@@ -193,11 +206,7 @@ sub get_wlc($$)
 
 	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
 	$exit_message =~ s/^ *//;
-
-	# Get all aps detail and cache result
-	get_all_aps($np, $snmp_session);
 	$snmp_session->close();
-
 	$np->nagios_exit($exit_code, $exit_message);
 }
 
@@ -229,24 +238,23 @@ sub get_list_ap($$)
 	foreach my $item (keys %$result)
 	{
 		
-		# my ($ap_index) = $item =~ /(\.[^.]+)$/;
-		# $ap_index = substr($ap_index, 1);
 		my $ap_index = get_ap_index_from_oid($item);
 		my $ap_info = $list_ap->{$ap_index};
-		if ($item =~ $oids->{ruckusZDAPConfigMacAddress})
+		my $item_oid = substr($item, 0, length($item) - length($ap_index) -1);
+		if ($item_oid =~ $oids->{ruckusZDAPConfigMacAddress})
 		{
 			$ap_info->{mac} = format_mac($result->{$item});
 			# print "$ap_index:", format_mac($result->{$item}), "\n";	
 		}
-		elsif ($item =~ $oids->{ruckusZDAPConfigDeviceName})
+		elsif ($item_oid =~ $oids->{ruckusZDAPConfigDeviceName})
 		{
-			$ap_info->{apName} = $result->{$item};
+			$ap_info->{apName} = sanitize_alias($result->{$item});
 		}
-		elsif ($item =~ $oids->{ruckusZDAPConfigLocation})
+		elsif ($item_oid =~ $oids->{ruckusZDAPConfigLocation})
 		{
 			$ap_info->{location} = $result->{$item};
 		}
-		elsif ($item =~ $oids->{ruckusZDAPConfigIpAddress})
+		elsif ($item_oid =~ $oids->{ruckusZDAPConfigIpAddress})
 		{
 			$ap_info->{ipAddress} = $result->{$item};
 		}
@@ -604,15 +612,21 @@ sub get_all_aps($$)
 		$list_ap->{$ap_mac} = $new_ap_info;
 	}
 	
-	# Save ap info into cache for later check service 
+	# Save ap info into cache for later check service
+	my $num_connected_ap = 0; 
 	foreach my $ap_mac (sort keys %$list_ap)
 	{
 		my $ap_info = $list_ap->{$ap_mac};
+		if ($ap_info->{ ruckusZDWLANAPStatus} ==1)
+		{
+			$num_connected_ap++;
+		}
 		# Get more AP information from  ruckusZDAPConfigTable
 		# $ap_info = get_ap_more_detail($ap_info, $np, $snmp_session, $ap_mac);
 		$ap_info->{time} = time;
 		save_cached_ap($np, $np->opts->hostname, $ap_mac, $ap_info);
 	}	
+	return $num_connected_ap;
 } 	
 
 #----------------------------------------

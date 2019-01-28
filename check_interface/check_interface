@@ -160,10 +160,10 @@ sub get_iflist($$)
 	$snmp_session->close();
 	foreach my $item (keys %$result)
 	{
+		my $ifid = get_ifid_from_oid($item);
+		my $item_oid = substr($item, 0, length($item) - length($ifid) -1);
 		foreach my $oid (keys %$oids)
 		{
-			my $ifid = get_ifid_from_oid($item);
-			my $item_oid = substr($item, 0, length($item) - length($ifid) -1);
 			if ($item_oid eq $oids->{$oid})
 			{
 				my $value = $result->{$item};
