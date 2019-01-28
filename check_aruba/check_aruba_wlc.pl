@@ -341,11 +341,12 @@ sub get_ap_cached($$$)
 			# Renew cache to double check
 			get_all_aps($np, $snmp_session);
 			$ap_info = get_cached_ap($np, $np->opts->hostname, $ap_mac);
-			# $time_delta = time - $ap_info->{time};
-			# if ($time_delta > $CACHE_EXPIRED)
-			# {
-			# 	$ap_info->{wlanAPStatus} = 2;
-			# }
+			# if AP is down then get_all_aps will not update AP cached
+			$time_delta = time - $ap_info->{time};
+			if ($time_delta > $CACHE_EXPIRED)
+			{
+				$ap_info->{wlanAPStatus} = 2;
+			}
 		}
 		
 	}
