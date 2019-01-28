@@ -804,7 +804,7 @@ my $code;
 my $ifName = $ifinfo->{ifName};
 if ($ifName =~ "noSuchObject")
 {
-	$ifName = $ifinfo->{ifDesc};
+	$ifName = $ifinfo->{ifDescr};
 }
 my $prefix = " $ifName (alias: $ifinfo->{ifAlias}) -";
 
