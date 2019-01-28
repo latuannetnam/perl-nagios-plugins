@@ -641,6 +641,10 @@ else
 	$np->nagios_die("invalid snmp protocol");
 }
 
+# Increase message size
+$snmp_session->max_msg_size(5000); 
+
+
 $np->nagios_die($snmp_error) if (!defined $snmp_session);
 
 #----------------------------------------
