@@ -191,6 +191,10 @@ sub get_iflist($$)
 		{
 			$if_info->{ifAlias} = "None";
 		}
+		if (!defined $if_info->{ifName})
+		{
+			$if_info->{ifName} = $if_info->{ifDescr};
+		}
 		if ($if_info->{ifName} eq "None")
 		{
 			$if_info->{ifName} = $if_info->{ifDescr};
