@@ -423,7 +423,7 @@ sub get_ap_more_detail($$$$)
 }
 
 
-sub get_ap_cached($$$)
+sub get_ap($$$)
 {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
@@ -448,20 +448,34 @@ sub get_ap_cached($$$)
 		# print "time delta:$time_delta\n";
 		if ($time_delta > $CACHE_EXPIRED)
 		{
-			# Renew cache to double check
-			get_all_aps($np, $snmp_session);
-			$ap_info = get_cached_ap($np, $np->opts->hostname, $ap_mac);
-			# if AP is down then get_all_aps will not update AP cached
-			$time_delta = time - $ap_info->{time};
-			if ($time_delta > $CACHE_EXPIRED)
+			print "Cached expired:$time_delta\n";
+			# Check AP status
+			my $mac_dec = hex2dec($ap_mac);
+			my $oid = "$OIDS_AP_STATE->{ruckusZDWLANAPStatus}.$mac_dec";
+			# print "oid:$oid\n";
+			my $result = $snmp_session->get_request(-varbindlist => [$oid]);
+			if (!defined $result)
 			{
 				$ap_info->{ruckusZDWLANAPStatus} = 0;
 				$ap_info->{ruckusZDWLANAPNumSta} = 0;
+				print "Can not query ruckusZDWLANAPStatus\n";
+			}
+			else
+			{
+				if ($result->{$oid}==1)
+				{
+					print "Renew cache to double check\n";
+					# Renew cache to double check
+					get_all_aps($np, $snmp_session);
+					$ap_info = get_cached_ap($np, $np->opts->hostname, $ap_mac);
+				}
+				else 
+				{
+					$ap_info->{ruckusZDWLANAPStatus} = 0;
+					$ap_info->{ruckusZDWLANAPNumSta} = 0;
+				}
 			}
 		}
-		
-		
-
 	}
 
 	#----------------------------------------
@@ -865,5 +879,5 @@ elsif ($np->opts->mode eq "list-ap")
 }
 elsif ($np->opts->mode eq "ap")
 {
-	get_ap_cached($np, $snmp_session,$np->opts->mac);
+	get_ap($np, $snmp_session,$np->opts->mac);
 }
