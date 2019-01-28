@@ -208,12 +208,16 @@ sub get_wlc($$)
 	my $wlc_num_user = $result->{$oids->{wlsxTotalNumOfUsers}};
 	my $wcl_memory_usage = $result->{$oids->{wlsxSysExtMemoryUsedPercent}};
 	my $wcl_cpu_usage = $result->{$oids->{wlsxSysExtCpuUsedPercent}};
+
+	# Get all APs detail and cached	 
+	my $wlc_num_connected_ap = get_all_aps($np, $snmp_session);
 	#----------------------------------------
 	# Metrics Summary
 	#----------------------------------------
-	my $metrics = sprintf("%s [%s] - %d APs - %d users - %d%% RAM - %d%% CPU",
+	my $metrics = sprintf("%s [%s] - %d APs up/%d APs - %d users - %d%% RAM - %d%% CPU",
 				$wlc_name,
 				$wlc_model,
+				$wlc_num_connected_ap,
 				$wlc_num_ap,
 				$wlc_num_user,
 				$wcl_memory_usage,
@@ -250,9 +254,6 @@ sub get_wlc($$)
 
 	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
 	$exit_message =~ s/^ *//;
-
-	# Get all APs detail and cached	 
-	get_all_aps($np, $snmp_session);
 	$snmp_session->close();
 	$np->nagios_exit($exit_code, $exit_message);
 }
@@ -325,7 +326,6 @@ sub get_ap_cached($$$)
 	{
 		# Renew cache
 		get_all_aps($np, $snmp_session);
-		$snmp_session->close();
 		$ap_info = get_cached_ap($np, $np->opts->hostname, $ap_mac);
 		if (!defined $ap_info)
 		{
@@ -338,8 +338,16 @@ sub get_ap_cached($$$)
 		# print "time delta:$time_delta\n";
 		if ($time_delta > $CACHE_EXPIRED)
 		{
-			$ap_info->{wlanAPStatus} = 2;
+			# Renew cache to double check
+			get_all_aps($np, $snmp_session);
+			$ap_info = get_cached_ap($np, $np->opts->hostname, $ap_mac);
+			# $time_delta = time - $ap_info->{time};
+			# if ($time_delta > $CACHE_EXPIRED)
+			# {
+			# 	$ap_info->{wlanAPStatus} = 2;
+			# }
 		}
+		
 	}
 
 	#----------------------------------------
@@ -415,6 +423,7 @@ sub get_ap_cached($$$)
 	my ($exit_code, $exit_message) = $np->check_messages();	
 	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
 	$exit_message =~ s/^ *//;
+	$snmp_session->close();
 	$np->nagios_exit($exit_code, $exit_message);
 	
 	
@@ -567,15 +576,17 @@ sub get_all_aps($$)
 	my $list_ap_bssid = get_all_ap_bssid_state($np, $snmp_session);
 	my $list_ap = get_all_ap_info($np, $snmp_session);
 	my $list_ap_bssid_ext = get_all_ap_bssid_state_ext($np, $snmp_session);
+	my $num_connected_ap = 0;
 	for my $ap_mac (sort keys %$list_ap)
 	{
 		my $ap_info = $list_ap->{$ap_mac};
 		
 		# Only keep AP with status=1
-		if ($ap_info->{ wlanAPStatus}>1)
+		if ($ap_info->{wlanAPStatus}>1)
 		{
 			next;
 		}
+		$num_connected_ap ++;
 		# print "$ap_mac:$ap_info->{wlanAPName}:$ap_info->{wlanAPIpAddress}\n";
 		# Get all bssid state matching ap ip address
 		my $ip_address = $ap_info->{wlanAPIpAddress};
@@ -616,12 +627,11 @@ sub get_all_aps($$)
 			
 			# print "$bssid:$$ap_bssid_ext->{$bssid}->{wlanAPNumClients}\n";
 		}
-		
 		$ap_info->{ap_bssid} = $ap_bssid_ext;
 		$ap_info->{time} = time;
 		save_cached_ap($np, $np->opts->hostname, $ap_mac, $ap_info);
 	}
-
+  return $num_connected_ap;
 }
 
 sub get_all_aps_old($$)
