@@ -435,36 +435,12 @@ sub get_ap_cached($$$)
 	{
 		# Renew cache
 		get_all_aps($np, $snmp_session);
-		$snmp_session->close();
 		$ap_info = get_cached_ap($np, $np->opts->hostname, $ap_mac);
 		if (!defined $ap_info)
 		{
 			$np->nagios_exit(3, "Can not get cached");
 		}
-		# print "Cache not found. Query SNMP\n";
-		# my @oids_list = ();
-		# my $oids = $OIDS_AP_STATE;
-
-		# # Get AP State from  ruckusZDWLANAPTable
-		# my $macdec = hex2dec($ap_mac);
-		# foreach my $item (keys %$oids)
-		# {
-		# 	push @oids_list, "$oids->{$item}.$macdec";
-		# }
-		# my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
-		# $np->nagios_die($snmp_session->error()) if (!defined $result);
 		
-		# foreach my $item (keys %$oids)
-		# {
-		# 	$ap_info->{$item} = $result->{"$oids->{$item}.$macdec"};
-		# 	# print $item, ":", $ap_info->{$item}, "\n";
-		# }
-
-		# # Get more AP information from  ruckusZDAPConfigTable
-		# $ap_info = get_ap_more_detail($ap_info, $np, $snmp_session, $ap_mac);
-		# $snmp_session->close();
-		# $ap_info->{time} = time;
-		# save_cached_ap($np, $np->opts->hostname, $ap_mac, $ap_info);
 	}
 	else
 	{
@@ -472,9 +448,18 @@ sub get_ap_cached($$$)
 		# print "time delta:$time_delta\n";
 		if ($time_delta > $CACHE_EXPIRED)
 		{
+			# Renew cache to double check
+			get_all_aps($np, $snmp_session);
+			$ap_info = get_cached_ap($np, $np->opts->hostname, $ap_mac);
+		}
+		
+		$time_delta = time - $ap_info->{time};
+		if ($time_delta > $CACHE_EXPIRED)
+		{
 			$ap_info->{ruckusZDWLANAPStatus} = 0;
 			$ap_info->{ruckusZDWLANAPNumSta} = 0;
 		}
+
 	}
 
 	#----------------------------------------
@@ -533,6 +518,7 @@ sub get_ap_cached($$$)
 	my ($exit_code, $exit_message) = $np->check_messages();	
 	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
 	$exit_message =~ s/^ *//;
+	$snmp_session->close();
 	$np->nagios_exit($exit_code, $exit_message);
 }
 
