@@ -104,6 +104,16 @@ sub sanitize_fname($)
 	return $name;
 }
 
+# Satinize alias
+sub sanitize_alias($)
+{
+	my $name = shift;
+	$name =~ s/\|/ /gi;
+	# $name =~ s/\]/ /gi;
+	$name =~ s/\=/-/gi;
+	return $name;
+}
+
 sub dec2hex($)
 {
 	my $dec = shift or die;
@@ -277,6 +287,7 @@ sub get_list_ap($$)
 		}
 		
 		$index = $index + 1;
+		$ap_info->{wlanAPName} = sanitize_alias($ap_info->{wlanAPName});
 		if ($index<= $MAX_ENTRIES)
 		{
 			print "$index: [$ap_mac] [$ap_info->{wlanAPName}] [$ap_info->{wlanAPLocation}] [$ap_info->{wlanAPIpAddress}]\n";
@@ -286,7 +297,7 @@ sub get_list_ap($$)
 		#----------------------------------------
 		if (!$np->opts->noperfdata)
 		{
-			$np->add_perfdata(label => "$ap_mac]$ap_info->{wlanAPName}]$ap_info->{wlanAPIpAddress}", 
+			$np->add_perfdata(label => "$ap_mac|$ap_info->{wlanAPName}|$ap_info->{wlanAPIpAddress}", 
 					value => 1, 
 					);
 		}

@@ -111,8 +111,8 @@ sub sanitize_fname($)
 sub sanitize_alias($)
 {
 	my $name = shift;
-	$name =~ s/\[/ /gi;
-	$name =~ s/\]/ /gi;
+	$name =~ s/\|/ /gi;
+	# $name =~ s/\]/ /gi;
 	$name =~ s/\=/-/gi;
 	return $name;
 }
@@ -288,7 +288,7 @@ sub get_list_ap($$)
 		#----------------------------------------
 		if (!$np->opts->noperfdata)
 		{
-			$np->add_perfdata(label => "$ap_info->{mac}]$ap_info->{apName}]$ap_info->{ipAddress}", 
+			$np->add_perfdata(label => "$ap_info->{mac}|$ap_info->{apName}|$ap_info->{ipAddress}", 
 					value => 1, 
 					);
 		}

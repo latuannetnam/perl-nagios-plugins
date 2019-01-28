@@ -128,8 +128,8 @@ sub sanitize_fname($)
 sub sanitize_alias($)
 {
 	my $name = shift;
-	$name =~ s/\[/ /gi;
-	$name =~ s/\]/ /gi;
+	$name =~ s/\|/ /gi;
+	# $name =~ s/\]/ /gi;
 	$name =~ s/\=/-/gi;
 	return $name;
 }
@@ -216,7 +216,7 @@ sub get_iflist($$)
 		#----------------------------------------
 		if (!$np->opts->noperfdata)
 		{
-			$np->add_perfdata(label => "$if_info->{ifDescr}]$if_info->{ifName}]$if_info->{ifAlias}", 
+			$np->add_perfdata(label => "$if_info->{ifDescr}|$if_info->{ifName}|$if_info->{ifAlias}", 
 					value => 1, 
 					);
 		}
