@@ -254,28 +254,33 @@ sub get_ifid($$$)
 	my $ifdescr = shift or die;
 	# Get interface id by ifName
 	my $result = $snmp_session->get_table(-baseoid => $OIDS->{ifName});
-	$np->nagios_die('get_ifid: ' . $snmp_session->error()) if !defined $result;
+	# $np->nagios_die('get_ifid: ' . $snmp_session->error()) if !defined $result;
 
-	foreach my $ifid (keys %$result)
+	if (defined $result)
 	{
-		# print "ifid:$ifid. name: $result->{$ifid}\n";
-		if ($result->{$ifid} eq $ifdescr)
+		foreach my $ifid (keys %$result)
 		{
-			$ifid =~ s/$OIDS->{ifName}\.//;
-			return $ifid;
+			# print "ifid:$ifid. name: $result->{$ifid}\n";
+			if ($result->{$ifid} eq $ifdescr)
+			{
+				$ifid =~ s/$OIDS->{ifName}\.//;
+				return $ifid;
+			}
 		}
 	}
-	# check ifName if not match
+	else
+	{
+		# check ifName if not match
 	$result = $snmp_session->get_table(-baseoid => $OIDS->{ifDescr});
 	$np->nagios_die('get_ifid: ' . $snmp_session->error()) if !defined $result;
-
-	foreach my $ifid (keys %$result)
-	{
-		# print "ifid:$ifid. name: $result->{$ifid}\n";
-		if ($result->{$ifid} eq $ifdescr)
+		foreach my $ifid (keys %$result)
 		{
-			$ifid =~ s/$OIDS->{ifDescr}\.//;
-			return $ifid;
+			# print "ifid:$ifid. name: $result->{$ifid}\n";
+			if ($result->{$ifid} eq $ifdescr)
+			{
+				$ifid =~ s/$OIDS->{ifDescr}\.//;
+				return $ifid;
+			}
 		}
 	}
 	$np->nagios_die("get_ifid: Can not get interface index for $ifdescr");
