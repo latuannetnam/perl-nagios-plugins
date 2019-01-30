@@ -181,6 +181,9 @@ sub get_wlc($$)
 		$np->add_perfdata(label => "num_ap", 
 				value => $wlc_num_ap, 
 				);
+		$np->add_perfdata(label => "num_connected_ap", 
+				value => $wlc_num_connected_ap, 
+				);				
 		$np->add_perfdata(label => "num_user", 
 				value => $wlc_num_user, 
 				);		
