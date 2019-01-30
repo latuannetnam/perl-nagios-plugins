@@ -211,16 +211,16 @@ sub get_wlc($$)
 		push @oids_list, "$oids->{$item}";
 	}
 	my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
-	$np->nagios_die($snmp_session->error()) if (!defined $result);
+	$np->nagios_die("get_wlc:". $snmp_session->error()) if (!defined $result);
 	my $wlc_name = $result->{$oids->{wlsxHostname}};
 	my $wlc_model = $result->{$oids->{wlsxModelName}};
-	my $wlc_num_ap = $result->{$oids->{wlsxSwitchTotalNumAccessPoints}};
+	my $wlc_num_connected_ap = $result->{$oids->{wlsxSwitchTotalNumAccessPoints}};
 	my $wlc_num_user = $result->{$oids->{wlsxTotalNumOfUsers}};
 	my $wcl_memory_usage = $result->{$oids->{wlsxSysExtMemoryUsedPercent}};
 	my $wcl_cpu_usage = $result->{$oids->{wlsxSysExtCpuUsedPercent}};
 
 	# Get all APs detail and cached	 
-	my $wlc_num_connected_ap = get_all_aps($np, $snmp_session);
+	my $wlc_num_ap = get_all_aps($np, $snmp_session);
 	#----------------------------------------
 	# Metrics Summary
 	#----------------------------------------
@@ -474,7 +474,7 @@ sub get_all_ap_info($$)
 	my $list_ap = {};
 	# Get AP detail info from    wlsxWlanAPTable
 	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
-	$np->nagios_die($snmp_session->error()) if (!defined $result);
+	$np->nagios_die("get_all_ap_info:" . $snmp_session->error()) if (!defined $result);
 	
 	foreach my $item (keys %$result)
 	{
@@ -518,8 +518,12 @@ sub get_all_ap_bssid_state($$)
 	}
 
 	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
-	$np->nagios_die($snmp_session->error()) if (!defined $result);
+	
 	my $list_ap_bssid = {};
+	if (!defined $result)
+	{
+		return $list_ap_bssid;
+	}
 	foreach my $item (keys %$result)
 	{
 		foreach my $oid (keys %$oids)
@@ -552,8 +556,12 @@ sub get_all_ap_bssid_state_ext($$)
 	}
 
 	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
-	$np->nagios_die($snmp_session->error()) if (!defined $result);
+	# $np->nagios_die("get_all_ap_bssid_state_ext:" . $snmp_session->error()) if (!defined $result);
 	my $list_ap_bssid = {};
+	if (!defined $result)
+	{
+		return $list_ap_bssid;
+	}
 	foreach my $item (keys %$result)
 	{
 		foreach my $oid (keys %$oids)
@@ -604,17 +612,17 @@ sub get_all_aps($$)
 	my $list_ap = get_all_ap_info($np, $snmp_session);
 	my $list_ap_bssid = get_all_ap_bssid_state($np, $snmp_session);
 	my $list_ap_bssid_ext = get_all_ap_bssid_state_ext($np, $snmp_session);
-	my $num_connected_ap = 0;
+	my $num_ap = keys %$list_ap; 
 	for my $ap_mac (sort keys %$list_ap)
 	{
 		my $ap_info = $list_ap->{$ap_mac};
 		
 		# Only keep AP with status=1
-		if ($ap_info->{wlanAPStatus}>1)
-		{
-			next;
-		}
-		$num_connected_ap ++;
+		# if ($ap_info->{wlanAPStatus} == 1)
+		# {
+		# 	$num_connected_ap ++;
+		# }
+		
 		# print "$ap_mac:$ap_info->{wlanAPName}:$ap_info->{wlanAPIpAddress}\n";
 		# Get all bssid state matching ap ip address
 		my $ip_address = $ap_info->{wlanAPIpAddress};
@@ -659,7 +667,7 @@ sub get_all_aps($$)
 		$ap_info->{time} = time;
 		save_cached_ap($np, $np->opts->hostname, $ap_mac, $ap_info);
 	}
-  return $num_connected_ap;
+  return $num_ap;
 }
 
 sub get_all_aps_old($$)
@@ -678,7 +686,7 @@ sub get_all_aps_old($$)
 	my $list_ap = {};
 	# Get AP detail info from   wlsxSwitchAccessPointEntry
 	my $result = $snmp_session->get_entries(-columns => [@oids_list]);
-	$np->nagios_die($snmp_session->error()) if (!defined $result);
+	$np->nagios_die("get_all_aps_old:" . $snmp_session->error()) if (!defined $result);
 	
 	foreach my $item (keys %$result)
 	{
