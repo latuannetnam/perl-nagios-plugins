@@ -430,7 +430,7 @@ sub get_ap($$$)
 	my $metrics = sprintf("%s [%s] [%s] [%s] [%s] [%s] - %s - %d users",
 				$ap_info->{wlanAPName},
 				$ap_mac,
-				$mac_dec;
+				$mac_dec,
 				$ap_info->{wlanAPModelName},
 				$ap_info->{wlanAPLocation},
 				$ap_info->{wlanAPIpAddress},
