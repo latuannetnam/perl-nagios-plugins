@@ -58,7 +58,7 @@ my $OIDS_AP_BSSID = {
 my $OIDS_AP_INFO = {
 	wlanAPName => '.1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.3',
 	wlanAPIpAddress => '.1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.2',
-	wlanAPModel => '.1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.5',
+	wlanAPModelName => '.1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.13',
 	wlanAPLocation => '.1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.14',
 	wlanAPStatus => '.1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.19',
 };
@@ -430,7 +430,7 @@ sub get_ap($$$)
 	my $metrics = sprintf("%s [%s] [%s] [%s] [%s] - %s - %d users",
 				$ap_info->{wlanAPName},
 				$ap_mac,
-				$ap_info->{wlanAPModel},
+				$ap_info->{wlanAPModelName},
 				$ap_info->{wlanAPLocation},
 				$ap_info->{wlanAPIpAddress},
 				$ap_status,
