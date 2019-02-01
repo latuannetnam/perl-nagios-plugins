@@ -427,9 +427,10 @@ sub get_ap($$$)
 	# Metrics Summary
 	#----------------------------------------
 	my $ap_status =  $AP_STATUS->{$ap_info->{wlanAPStatus}};
-	my $metrics = sprintf("%s [%s] [%s] [%s] - %s - %d users",
+	my $metrics = sprintf("%s [%s] [%s] [%s] [%s] - %s - %d users",
 				$ap_info->{wlanAPName},
 				$ap_mac,
+				$ap_info->{wlanAPModel},
 				$ap_info->{wlanAPLocation},
 				$ap_info->{wlanAPIpAddress},
 				$ap_status,
