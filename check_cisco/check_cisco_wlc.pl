@@ -462,6 +462,7 @@ sub get_ap($$$)
 	my $snmp_session = shift or die;
 	my $ap_mac = shift or die;
 	my $ap_info = get_cached_ap($np, $np->opts->hostname, $ap_mac);
+	my $mac_dec = hex2dec($ap_mac);
 	# print "Get cache for:$ap_mac \n";
 	if (!defined $ap_info)
 	{
@@ -481,7 +482,6 @@ sub get_ap($$$)
 		{
 			print "Cached expired:$time_delta\n";
 			# Check AP status
-			my $mac_dec = hex2dec($ap_mac);
 			my $oid = "$OIDS_AP_INFO->{bsnAPOperationStatus}.$mac_dec";
 			# print "oid:$oid\n";
 			my $result = $snmp_session->get_request(-varbindlist => [$oid]);
@@ -543,9 +543,10 @@ sub get_ap($$$)
 	# Metrics Summary
 	#----------------------------------------
 	my $ap_status =  $AP_STATUS->{$ap_info->{bsnAPOperationStatus}};
-	my $metrics = sprintf("%s [%s] [%s] [%s] [%s] - %s - %d users",
+	my $metrics = sprintf("%s [%s] [%s] [%s] [%s] [%s] - %s - %d users",
 				$ap_info->{bsnAPName},
 				$ap_mac,
+				$mac_dec,
 				$ap_info->{bsnAPModel},
 				$ap_info->{bsnAPLocation},
 				$ap_info->{bsnApIpAddress},
