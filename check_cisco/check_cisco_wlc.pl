@@ -36,7 +36,7 @@ my $OIDS_SYSTEM = {
 my $OIDS_WLC = {
 	sysName => '.1.3.6.1.2.1.1.5.0',
 	#  agentInventoryGroup
-	agentInventoryMachineModel => '.1.3.6.1.4.1.14179.1.1.1.3.0',
+	# agentInventoryMachineModel => '.1.3.6.1.4.1.14179.1.1.1.3.0',
 	# clsSysInfo
 	clsSysApConnectCount => '.1.3.6.1.4.1.9.9.618.1.8.4.0',
 	clsCurrentOnlineUsersCount => '.1.3.6.1.4.1.9.9.618.1.8.15.0',
@@ -365,7 +365,7 @@ sub get_wlc($$)
 	my $result = $snmp_session->get_request(-varbindlist => [@oids_list]);
 	$np->nagios_die("get_wlc:". $snmp_session->error()) if (!defined $result);
 	my $wlc_name = $result->{$oids->{sysName}};
-	my $wlc_model = $result->{$oids->{agentInventoryMachineModel}};
+	# my $wlc_model = $result->{$oids->{agentInventoryMachineModel}};
 	my $wlc_num_connected_ap = $result->{$oids->{clsSysApConnectCount}};
 	my $wcl_memory_usage = $result->{$oids->{clsSysCurrentMemoryUsage}};
 	my $wcl_cpu_usage = $result->{$oids->{clsSysCurrentCpuUsage}};
@@ -392,9 +392,9 @@ sub get_wlc($$)
 	#----------------------------------------
 	# Metrics Summary
 	#----------------------------------------
-	my $metrics = sprintf("%s [%s] - %d APs up/%d APs - %d users - %d%% RAM - %d%% CPU",
+	my $metrics = sprintf("%s - %d APs up/%d APs - %d users - %d%% RAM - %d%% CPU",
 				$wlc_name,
-				$wlc_model,
+				# $wlc_model,
 				$wlc_num_connected_ap,
 				$wlc_num_ap,
 				$wlc_num_user,
