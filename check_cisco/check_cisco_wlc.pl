@@ -38,8 +38,8 @@ my $OIDS_WLC = {
 	#  agentInventoryGroup
 	# agentInventoryMachineModel => '.1.3.6.1.4.1.14179.1.1.1.3.0',
 	# clsSysInfo
-	clsSysApConnectCount => '.1.3.6.1.4.1.9.9.618.1.8.4.0',
-	clsCurrentOnlineUsersCount => '.1.3.6.1.4.1.9.9.618.1.8.15.0',
+	# clsSysApConnectCount => '.1.3.6.1.4.1.9.9.618.1.8.4.0',
+	# clsCurrentOnlineUsersCount => '.1.3.6.1.4.1.9.9.618.1.8.15.0',
 	clsSysCurrentMemoryUsage => '.1.3.6.1.4.1.9.9.618.1.8.6.0',
 	clsSysCurrentCpuUsage => '.1.3.6.1.4.1.9.9.618.1.8.8.0',
 };
@@ -366,7 +366,7 @@ sub get_wlc($$)
 	$np->nagios_die("get_wlc:". $snmp_session->error()) if (!defined $result);
 	my $wlc_name = $result->{$oids->{sysName}};
 	# my $wlc_model = $result->{$oids->{agentInventoryMachineModel}};
-	my $wlc_num_connected_ap = $result->{$oids->{clsSysApConnectCount}};
+	# my $wlc_num_connected_ap = $result->{$oids->{clsSysApConnectCount}};
 	my $wcl_memory_usage = $result->{$oids->{clsSysCurrentMemoryUsage}};
 	my $wcl_cpu_usage = $result->{$oids->{clsSysCurrentCpuUsage}};
 
@@ -374,12 +374,17 @@ sub get_wlc($$)
 	my $list_ap = get_all_aps($np, $snmp_session);
 	my $wlc_num_user = 0;
 	my $wlc_num_ap = keys %$list_ap;
+	 my $wlc_num_connected_ap = 0;
 	for my $ap_mac (sort keys %$list_ap)
 	{
 		my $ap_info = $list_ap->{$ap_mac};
 		if (defined $ap_info->{"ap_if"})
 		{
 			my $ap_if = $ap_info->{"ap_if"};
+			if ($ap_info->{bsnAPOperationStatus} == 1)
+			{
+				$wlc_num_connected_ap ++;
+			}
 			foreach my $ap_index (keys %$ap_if)
 			{
 				if (defined $ap_if->{$ap_index}->{bsnApIfNoOfUsers})
