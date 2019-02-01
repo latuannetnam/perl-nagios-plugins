@@ -819,12 +819,12 @@ if ($inbps >=0 && $outbps>=0)
 {
 	if (($code = $np->check_threshold(check => $inspdpct, warning => $np->opts->wpctbps, critical => $np->opts->cpctbps)) != OK)
 	{
-		$np->add_message($code, $prefix . ' [%BPS IN]');
+		$np->add_message($code, ' [%BPS IN]');
 	}
 
 	if (($code = $np->check_threshold(check => $outspdpct, warning => $np->opts->wpctbps, critical => $np->opts->cpctbps)) != OK)
 	{
-		$np->add_message($code, $prefix . ' [%BPS OUT]');
+		$np->add_message($code, ' [%BPS OUT]');
 	}
 	
 	if (($code = $np->check_threshold(check => $inbps, warning => $np->opts->wbps, critical => $np->opts->cbps)) != OK)
@@ -840,12 +840,12 @@ if ($inbps >=0 && $outbps>=0)
 
 	if (($code = $np->check_threshold(check => $inpps, warning => $np->opts->wpkts, critical => $np->opts->cpkts)) != OK)
 	{
-		$np->add_message($code, $prefix .  ' [PPS IN]');
+		$np->add_message($code, ' [PPS IN]');
 	}
 
 	if (($code = $np->check_threshold(check => $outpps, warning => $np->opts->wpkts, critical => $np->opts->cpkts)) != OK)
 	{
-		$np->add_message($code, $prefix .  ' [PPS OUT]');
+		$np->add_message($code, ' [PPS OUT]');
 	}
 }
 
@@ -854,11 +854,11 @@ if (($np->opts->interfacestatus == 1 && $ifinfo->{ifAdminStatus} == 1 && $ifinfo
 {
 	if ($np->opts->warnifcritical)
 	{
-		$np->add_message(WARNING, $prefix .  '[IF DOWN]');
+		$np->add_message(WARNING, '[IF DOWN]');
 	}
 	else
 	{
-		$np->add_message(CRITICAL, $prefix .  '[IF DOWN]');
+		$np->add_message(CRITICAL, '[IF DOWN]');
 	}
 }
 
