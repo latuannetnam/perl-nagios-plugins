@@ -322,7 +322,7 @@ sub get_list_ap($$)
 		#----------------------------------------
 		if (!$np->opts->noperfdata)
 		{
-			$np->add_perfdata(label => "$ap_mac|$ap_info->{bsnAPName}|$ap_info->{bsnAPLocation}", 
+			$np->add_perfdata(label => "$ap_mac|$ap_info->{bsnAPName}|$ap_info->{bsnApIpAddress}", 
 					value => 1, 
 					);
 		}
