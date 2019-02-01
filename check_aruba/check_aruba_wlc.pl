@@ -386,6 +386,7 @@ sub get_ap($$$)
 	if ($ap_info->{wlanAPStatus} == 2)
 	{
 		print "Double check AP status\n";
+		my  $p = Net::Ping->new();
 		if ($p->ping($host))
 		{
 			$ap_info->{wlanAPStatus} = 1;
