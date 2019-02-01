@@ -457,9 +457,6 @@ sub get_ap($$$)
 	$exit_message =~ s/^ *//;
 	$snmp_session->close();
 	$np->nagios_exit($exit_code, $exit_message);
-	
-	
-	
 }
 
 sub get_all_ap_info($$)
@@ -793,7 +790,7 @@ sub get_all_aps_old($$)
 #----------------------------------------
 my $np = Nagios::Monitoring::Plugin->new(
 	shortname => 'ARUBA-WLC',
-	usage => "usage: check_aruba_instant.pl <options> -H <host_address> \n   use --help for more info",
+	usage => "usage: check_aruba_wlc.pl <options> -H <host_address> \n   use --help for more info",
 	plugin => 'ARUBA-WLC',
 	version => '1.0'
 );
