@@ -23,6 +23,7 @@ use 5.008;
 use Nagios::Monitoring::Plugin;
 use Net::SNMP;
 use Data::Dumper;
+use Net::Ping;
 
 my $STATEDIR = '/var/tmp';
 
@@ -361,7 +362,7 @@ sub get_ap($$$)
 			if (!defined $result)
 			{
 				$ap_info->{wlanAPStatus} = 2;
-				print "Can not query wlanAPStatus\n";
+				print "Can not query wlanAPStatus: " . $snmp_session->error();
 			}
 			else
 			{
@@ -379,7 +380,16 @@ sub get_ap($$$)
 			
 			
 		}
-		
+	}
+
+	# Double check if AP state = 2
+	if ($ap_info->{wlanAPStatus} == 2)
+	{
+		print "Double check AP status\n";
+		if ($p->ping($host))
+		{
+			$ap_info->{wlanAPStatus} = 1;
+		}
 	}
 
 	#----------------------------------------
@@ -524,6 +534,7 @@ sub get_all_ap_bssid_state($$)
 	my $list_ap_bssid = {};
 	if (!defined $result)
 	{
+		print "get_all_ap_bssid_state:" . $snmp_session->error();
 		return $list_ap_bssid;
 	}
 	foreach my $item (keys %$result)
@@ -562,6 +573,7 @@ sub get_all_ap_bssid_state_ext($$)
 	my $list_ap_bssid = {};
 	if (!defined $result)
 	{
+		print "get_all_ap_bssid_state_ext: " . $snmp_session->error();
 		return $list_ap_bssid;
 	}
 	foreach my $item (keys %$result)
