@@ -370,11 +370,23 @@ sub get_wlc($$)
 	my $wcl_memory_usage = $result->{$oids->{clsSysCurrentMemoryUsage}};
 	my $wcl_cpu_usage = $result->{$oids->{clsSysCurrentCpuUsage}};
 
+	if ($wcl_memory_usage eq "noSuchObject")
+	{
+		$wcl_memory_usage = 0;	
+	}
+
+	if ($wcl_cpu_usage eq "noSuchObject")
+	{
+		$wcl_cpu_usage = 0;	
+	}
+
+	
+
 	# Get all APs detail and cached	 
 	my $list_ap = get_all_aps($np, $snmp_session);
 	my $wlc_num_user = 0;
 	my $wlc_num_ap = keys %$list_ap;
-	 my $wlc_num_connected_ap = 0;
+	my $wlc_num_connected_ap = 0;
 	for my $ap_mac (sort keys %$list_ap)
 	{
 		my $ap_info = $list_ap->{$ap_mac};
