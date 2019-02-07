@@ -485,6 +485,11 @@ sub get_ap($$$)
 	#----------------------------------------
 	# $ap_info->{ruckusZDWLANAPStatus} = 2;
 	my $ap_status =  $AP_STATUS->{$ap_info->{ruckusZDWLANAPStatus}};
+	my $ap_ram = 0;
+	if ($ap_info->{ruckusZDWLANAPMemTotal}>0)
+	{
+		$ap_ram = $ap_info->{ruckusZDWLANAPMemUtil}/$ap_info->{ruckusZDWLANAPMemTotal}*100;
+	}
 	my $metrics = sprintf("%s [%s] [%s] [%s] [%s] [%s] - %s - %d users - %0.2f%% RAM - %d%% CPU",
 				$ap_info->{ruckusZDAPConfigDeviceName},
 				$ap_mac,
@@ -494,7 +499,7 @@ sub get_ap($$$)
 				$ap_info->{ruckusZDWLANAPIPAddr},
 				$ap_status,
 				$ap_info->{ruckusZDWLANAPNumSta},
-				$ap_info->{ruckusZDWLANAPMemUtil}/$ap_info->{ruckusZDWLANAPMemTotal}*100,
+				$ap_ram,
 				$ap_info->{ruckusZDWLANAPCPUUtil},
 	);
 
