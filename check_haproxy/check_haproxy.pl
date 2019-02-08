@@ -337,6 +337,20 @@ if ( $status == OK && $stats ne "") {
 				'max' => $stats2{$pxname}{'slim'},
 			);
             $np->add_perfdata(
+				'label' => 'active_'.$pxname,
+				'value' => $stats2{$pxname}{'act'},
+				'min' => 0,
+				'max' => $stats2{$pxname}{'acttot'},
+			);
+            
+            $np->add_perfdata(
+				'label' => 'backup_'.$pxname,
+				'value' => $stats2{$pxname}{'bck'},
+				'min' => 0,
+				'max' => $stats2{$pxname}{'bcktot'},
+			);
+
+            $np->add_perfdata(
 				'label' => 'bytes_in_'.$pxname,
 				'value' => $stats2{$pxname}{'bin'},
 			);
