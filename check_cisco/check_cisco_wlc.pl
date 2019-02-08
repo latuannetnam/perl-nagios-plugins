@@ -506,6 +506,17 @@ sub get_ap($$$)
 		}
 	}
 
+	# Double check if AP state = 2
+	if ($ap_info->{bsnAPOperationStatus} == 2)
+	{
+		print "Double check AP status\n";
+		my  $p = Net::Ping->new();
+		if ($p->ping($ap_info->{bsnApIpAddress}))
+		{
+			$ap_info->{bsnAPOperationStatus} = 1;
+		}
+	}
+
 	#----------------------------------------
 	# Performance Data
 	#----------------------------------------
