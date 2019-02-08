@@ -233,7 +233,8 @@ if ( $status == OK && $stats ne "") {
 	}
 
 	my %stats = ();
-	for ( my $y = 1; $y < $#rows; $y++ ) {
+	for ( my $y = 1; $y <= $#rows; $y++ ) {
+        # print "Row:$y:$rows[$y]\n";
 		my @values = split(/\,/,$rows[$y]);
 		if ( !defined($stats{$values[0]}) ) {
 			$stats{$values[0]} = {};
@@ -250,6 +251,7 @@ if ( $status == OK && $stats ne "") {
 	my %stats2 = ();
 	my $okMsg = '';
 	foreach my $pxname ( keys(%stats) ) {
+       logD("pxname:$pxname");
 		$stats2{$pxname} = {
 			'act' => 0,
 			'acttot' => 0,
@@ -257,8 +259,19 @@ if ( $status == OK && $stats ne "") {
 			'bcktot' => 0,
 			'scur' => 0,
 			'slim' => 0,
+            'bin' => 0,
+            'bout' => 0,
+            'dreq' => 0,
+            'dresp' => 0,
+            'ereq' => 0,
+            'econ' => 0,
+            'eresp' => 0,
+            'wretr' => 0,
+            'wredis' => 0,
 			};
+
 		foreach my $svname ( keys(%{$stats{$pxname}}) ) {
+            # print "svname:$svname:$stats{$pxname}{$svname}{'type'}:$stats{$pxname}{$svname}{'act'}\n";
 			if ( $stats{$pxname}{$svname}{'type'} eq '2' ) {
 				my $svstatus = $stats{$pxname}{$svname}{'status'} eq 'UP';
 				my $active = $stats{$pxname}{$svname}{'act'} eq '1';
@@ -284,11 +297,30 @@ if ( $status == OK && $stats ne "") {
 					$stats2{$pxname}{'bcktot'}++;
 					$stats2{$pxname}{'bck'} += $svstatus;
 				}
+                # Perfdata calculation
 				$stats2{$pxname}{'scur'} += $stats{$pxname}{$svname}{'scur'};
-				logD( "Current sessions : ".$stats{$pxname}{$svname}{'scur'} );
+                $stats2{$pxname}{'bin'} += $stats{$pxname}{$svname}{'bin'};
+                $stats2{$pxname}{'bout'} += $stats{$pxname}{$svname}{'bout'};
+                if ($stats{$pxname}{$svname}{'dreq'} eq "")
+                {
+                    $stats{$pxname}{$svname}{'dreq'} = 0;
+                }
+                $stats2{$pxname}{'dreq'} += $stats{$pxname}{$svname}{'dreq'};
+                $stats2{$pxname}{'dresp'} += $stats{$pxname}{$svname}{'dresp'};
+                if ($stats{$pxname}{$svname}{'ereq'} eq "")
+                {
+                    $stats{$pxname}{$svname}{'ereq'} = 0;
+                }
+                $stats2{$pxname}{'ereq'} += $stats{$pxname}{$svname}{'ereq'};
+                $stats2{$pxname}{'econ'} += $stats{$pxname}{$svname}{'econ'};
+                $stats2{$pxname}{'eresp'} += $stats{$pxname}{$svname}{'eresp'};
+                $stats2{$pxname}{'wretr'} += $stats{$pxname}{$svname}{'wretr'};
+                $stats2{$pxname}{'wredis'} += $stats{$pxname}{$svname}{'wredis'};
+				logD( "Current sessions : $stats{$pxname}{$svname}{'scur'}| Bytes in:$stats{$pxname}{$svname}{'bin'}| Bytes out:$stats{$pxname}{$svname}{'bout'}");
 
-			} elsif ( $stats{$pxname}{$svname}{'type'} eq '0' ) {
+			} elsif ( ($stats{$pxname}{$svname}{'type'} eq '0') ||  ($stats{$pxname}{$svname}{'type'} eq '1')) {
 				$stats2{$pxname}{'slim'} = $stats{$pxname}{$svname}{'slim'};
+                logD( "Session limit : ".$stats{$pxname}{$svname}{'slim'} );
 			}
 		}
 		if ( $stats2{$pxname}{'acttot'} > 0 ) {
@@ -303,6 +335,42 @@ if ( $status == OK && $stats ne "") {
 				'min' => 0,
 				# 'uom' => 'sessions',
 				'max' => $stats2{$pxname}{'slim'},
+			);
+            $np->add_perfdata(
+				'label' => 'bytes_in_'.$pxname,
+				'value' => $stats2{$pxname}{'bin'},
+			);
+            $np->add_perfdata(
+				'label' => 'bytes_out_'.$pxname,
+				'value' => $stats2{$pxname}{'bout'},
+			);
+            $np->add_perfdata(
+				'label' => 'denied_req_'.$pxname,
+				'value' => $stats2{$pxname}{'dreq'},
+			);
+            $np->add_perfdata(
+				'label' => 'denied_resp_'.$pxname,
+				'value' => $stats2{$pxname}{'dresp'},
+			);
+            $np->add_perfdata(
+				'label' => 'error_req_'.$pxname,
+				'value' => $stats2{$pxname}{'ereq'},
+			);
+            $np->add_perfdata(
+				'label' => 'error_resp_'.$pxname,
+				'value' => $stats2{$pxname}{'eresp'},
+			);
+            $np->add_perfdata(
+				'label' => 'error_conn_'.$pxname,
+				'value' => $stats2{$pxname}{'econ'},
+			);
+            $np->add_perfdata(
+				'label' => 'warning_retr_'.$pxname,
+				'value' => $stats2{$pxname}{'wretr'},
+			);
+            $np->add_perfdata(
+				'label' => 'warning_redis_'.$pxname,
+				'value' => $stats2{$pxname}{'wredis'},
 			);
 		}
 	}
