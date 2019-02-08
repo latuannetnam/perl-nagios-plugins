@@ -492,7 +492,7 @@ sub get_ap($$$)
 			}
 			else
 			{
-				if ($result->{$oid}==1)
+				if (($result->{$oid} ne "noSuchInstance") && ($result->{$oid}==1))
 				{
 					print "Renew cache to double check\n";
 					# Renew cache to double check
