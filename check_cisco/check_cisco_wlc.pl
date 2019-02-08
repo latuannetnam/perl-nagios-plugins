@@ -22,6 +22,7 @@ use 5.008;
 use Nagios::Monitoring::Plugin;
 use Net::SNMP;
 use Data::Dumper;
+use Net::Ping;
 
 my $STATEDIR = '/var/tmp';
 my $MAX_ENTRIES = 10;
