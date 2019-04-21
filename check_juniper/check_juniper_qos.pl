@@ -154,7 +154,7 @@ sub get_filter_list($$$)
     my $np = shift or die;
 	my $snmp_session = shift or die;
     my $oid = shift or die;
-    my $result = $snmp_session->get_entries(-columns => [$oid], -maxrepetitions => 1);
+    my $result = $snmp_session->get_entries(-columns => [$oid], -maxrepetitions => 10);
 	$np->nagios_die("get_filter_list:" . $snmp_session->error()) if (!defined $result);
 	$snmp_session->close();
     # print Dumper($result);
@@ -182,7 +182,7 @@ sub get_filterid($$$$)
 	my $filter = shift or die;
     my $oid = shift or die;
 	# Get oid index by filter name
-    my $result = $snmp_session->get_entries(-columns => [$oid], -maxrepetitions => 1);
+    my $result = $snmp_session->get_entries(-columns => [$oid], -maxrepetitions => 10);
 	$np->nagios_die('get_filterid: ' . $snmp_session->error()) if !defined $result;
 
     foreach my $item (keys %$result)
