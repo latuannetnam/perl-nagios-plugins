@@ -184,7 +184,7 @@ sub get_iflist($$)
 	}
 
 	my $index = 0;
-	foreach my $ifid (sort keys %$iflist)
+	foreach my $ifid (sort { $a <=> $b } keys %$iflist)
 	{
 		my $if_info = $iflist->{$ifid};
 		$index = $index + 1;
@@ -210,7 +210,7 @@ sub get_iflist($$)
 		
 		if ($index<= $MAX_ENTRIES)
 		{
-			print "$index: [$if_info->{ifName}] [$if_info->{ifDescr}] [$if_info->{ifAlias}]\n";
+			print "$index: [$ifid] [$if_info->{ifName}] [$if_info->{ifDescr}] [$if_info->{ifAlias}]\n";
 		}
 		# print "$index: [$if_info->{ifDescr}] [$if_info->{ifName}] [$if_info->{ifAlias}]\n";
 		#----------------------------------------
@@ -218,7 +218,7 @@ sub get_iflist($$)
 		#----------------------------------------
 		if (!$np->opts->noperfdata)
 		{
-			$np->add_perfdata(label => "$if_info->{ifName}|$if_info->{ifDescr}|$if_info->{ifAlias}", 
+			$np->add_perfdata(label => "$ifid|$if_info->{ifName}|$if_info->{ifDescr}|$if_info->{ifAlias}", 
 					value => 1, 
 					);
 		}
