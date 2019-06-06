@@ -140,65 +140,6 @@ sub get_ifid($$$)
 	return undef;
 }
 
-sub get_cached_ifinfo($$$)
-{
-	my $np = shift or die;
-	my $hostname = shift or die;
-	my $ifdescr = shift or die;
-	my $fd;
-
-	my $datafile = $np->opts->datadir . '/check_dom/' . $hostname . '/' . sanitize_fname($ifdescr) . '.dat';
-	
-	return undef if (!-e $datafile);
-
-	if (!open($fd, '<', $datafile))
-	{
-		$np->nagios_die("unable to open datafile '$datafile': $!");
-	}
-	read($fd, my $content, 8192);
-	close($fd);
-
-	my $data = eval($content);
-	$np->nagios_die("invalid data in datafile '$datafile': $@") if $@;
-	return $data;
-
-	return undef;
-}
-
-sub save_cached_ifinfo($$$$)
-{
-	my $np = shift or die;
-	my $hostname = shift or die;
-	my $ifdescr = shift or die;
-	my $ifinfo = shift or die;
-	my $fd;
-
-	if (! -d ($np->opts->datadir . '/check_dom/' . $hostname))
-	{
-		if (! -d ($np->opts->datadir . '/check_dom'))
-		{
-			mkdir $np->opts->datadir . '/check_dom'
-				or $np->nagios_die($!);
-		}
-		mkdir $np->opts->datadir . '/check_dom/' . $hostname
-			or $np->nagios_die($!);
-	}
-
-	my $datafile = $np->opts->datadir . '/check_dom/' . $hostname . '/' . sanitize_fname($ifdescr) . '.dat';
-	
-	if (!open($fd, '>', $datafile . '.new'))
-	{
-		$np->nagios_die("unable to open datafile '$datafile.new': $!");
-	}
-
-	print $fd Data::Dumper->new([$ifinfo])->Terse(1)->Purity(1)->Dump();
-	close($fd);
-	if (!rename($datafile . '.new', $datafile))
-	{
-		$np->nagios_die("unable to rename datafile '$datafile.new' to '$datafile': $!");
-	}
-}
-
 sub log10($) {
         my $n = shift;
         return log($n)/log(10);
@@ -462,7 +403,7 @@ sub get_optics($$$$)
 #------------ Main program ------------------------
 my $np = Nagios::Monitoring::Plugin->new(
 	shortname => 'OPTICAL-DOM',
-	usage => "usage: check_dom <options> -H <host_address> -i interface --os <Juniper|HP>\n   use --help for more info",
+	usage => "usage: check_dom <options> -H <host_address> -i interface (--index ifindex) --os <Juniper|HP>\n   use --help for more info",
 	plugin => 'OPTICAL-DOM',
 	version => '1.0'
 );
@@ -480,7 +421,13 @@ $np->add_arg(
 $np->add_arg(
 	spec => 'interface|i=s',
 	help => "-i <interface_name>\n   Interface to check (ex: GigabitEthernet0/1)",
-	required => 1
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'index=s',
+	help => "<ifindex>\n   Interface  index to check (ex: 154)",
+	required => 0,
 );
 
 $np->add_arg(
@@ -675,9 +622,18 @@ if (! -w $np->opts->datadir)
 {
 	$np->nagios_die("Unable to write to data directory" . $np->opts->datadir);
 }
+# Check argument: ifindex or interface-name
 
 my $ifid;
-$ifid = get_ifid($np, $snmp_session, $np->opts->interface);
+if (defined $np->opts->index) {
+	# $ifName = get_interface($np, $snmp_session, $np->opts->index);
+	$ifid = $np->opts->index;
+}
+else {
+	$ifid = get_ifid($np, $snmp_session, $np->opts->interface);
+}
+
+
 $np->nagios_die('interface not found') if (!defined $ifid);
 
 #----------------------------------------

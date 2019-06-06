@@ -247,6 +247,20 @@ sub get_iflist($$)
 
 }
 
+sub get_interface($$$)
+{
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	my $ifid = shift or die;
+	my $oid = $OIDS->{ifName} . "." . $ifid;
+	# print("oid: $oid\n");
+	my $result = $snmp_session->get_request(-varbindlist => [$oid]);
+	$np->nagios_die('get_interface: ' . $snmp_session->error()) if (!defined $result);
+	my $ifName = $result->{$oid};
+	# print("Interface name: $ifName\n");
+	return $ifName;
+}
+
 sub get_ifid($$$)
 {
 	my $np = shift or die;
@@ -478,8 +492,13 @@ $np->add_arg(
 $np->add_arg(
 	spec => 'interface|i=s',
 	help => "-i <interface_name>\n   Interface to check (ex: GigabitEthernet0/1)",
-	required => 1,
-	default => "eth0",
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'index=s',
+	help => "<ifindex>\n   Interface  index to check (ex: 154)",
+	required => 0,
 );
 
 $np->add_arg(
@@ -672,11 +691,18 @@ if (! -w $np->opts->datadir)
 	$np->nagios_die("Unable to write to data directory" . $np->opts->datadir);
 }
 
+# Check argument: ifindex or interface-name
+my $ifName = $np->opts->interface;
+if (defined $np->opts->index)
+{
+	$ifName = get_interface($np, $snmp_session, $np->opts->index);
+}
+
 #----------------------------------------
 # Get Cached Interface Info
 #----------------------------------------
 
-my $cached_ifinfo = get_cached_ifinfo($np, $np->opts->hostname, $np->opts->interface);
+my $cached_ifinfo = get_cached_ifinfo($np, $np->opts->hostname, $ifName);
 
 #----------------------------------------
 # Switch Interface Polling
@@ -690,7 +716,7 @@ if (defined($cached_ifinfo) && defined($cached_ifinfo->{ifId}))
 }
 else
 {
-	$ifid = get_ifid($np, $snmp_session, $np->opts->interface);
+	$ifid = get_ifid($np, $snmp_session, $ifName);
 }
 
 $np->nagios_die('interface not found') if (!defined $ifid);
@@ -750,7 +776,7 @@ else
 # Save Cached Interface Info
 #----------------------------------------
 
-save_cached_ifinfo($np, $np->opts->hostname, $np->opts->interface, $ifinfo);
+save_cached_ifinfo($np, $np->opts->hostname, $ifName, $ifinfo);
 
 #----------------------------------------
 # Performance Data
@@ -806,12 +832,13 @@ else
 #----------------------------------------
 
 my $code;
-my $ifName = $ifinfo->{ifName};
+my $ifId = $ifinfo->{ifId};
+$ifName = $ifinfo->{ifName};
 if ($ifName =~ "noSuchObject")
 {
 	$ifName = $ifinfo->{ifDescr};
 }
-my $prefix = " $ifName (alias: $ifinfo->{ifAlias}) -";
+my $prefix = " $ifName ($ifId) (alias: $ifinfo->{ifAlias}) -";
 
 $np->add_message(OK,'');
 
