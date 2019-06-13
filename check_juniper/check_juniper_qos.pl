@@ -20,7 +20,7 @@ use strict;
 use warnings;
 use 5.008;
 use Nagios::Monitoring::Plugin;
-use Net::SNMP;
+use Net::SNMP qw(:snmp);
 use Data::Dumper;
 use Net::Ping;
 
@@ -149,10 +149,14 @@ sub save_cached($$$$)
 	}
 }
 
-sub get_filter_list($$$)
+
+
+sub get_filter_list_blocking($$$$)
 {
     my $np = shift or die;
 	my $snmp_session = shift or die;
+	my $mode = shift or die;
+	my $nonblocking = shift or die;
     my $oid = shift or die;
     my $result = $snmp_session->get_entries(-columns => [$oid], -maxrepetitions => 10);
 	$np->nagios_die("get_filter_list:" . $snmp_session->error()) if (!defined $result);
@@ -174,6 +178,81 @@ sub get_filter_list($$$)
 	my ($exit_code, $exit_message) = $np->check_messages();
 	$np->nagios_exit($exit_code, $exit_message);
 }
+
+sub filter_cb($$)
+{
+	my ($snmp_session, $np, $mode, $base_oid, $total_items, $filters) = @_;
+	$np->nagios_die("filter_cb:" . $snmp_session->error()) if (!defined $snmp_session->var_bind_list);
+	print("Next result:\n");
+	my $next;
+	# my $base_oid = $OIDS_UPLOAD_QOS->{jnxFWCounterDisplayName};
+	my $size = keys %{$snmp_session->var_bind_list};
+	$total_items += $size;
+	print("Total items: $total_items \n");
+	
+	foreach my $oid (oid_lex_sort(keys(%{$snmp_session->var_bind_list}))) {
+		print("$oid: " . $snmp_session->var_bind_list->{$oid} . "\n");
+		if (!oid_base_match($base_oid, $oid)) {
+			$next = undef;
+			last;
+		}
+		$next = $oid; 
+		$filters->{$oid} = $snmp_session->var_bind_list->{$oid};
+		
+	}
+	# If $next is defined we need to send another request 
+		# to get more of the table.
+	if (defined($next)) {
+		if ($total_items < $np->opts->max_item) {
+			my $result = $snmp_session->get_bulk_request(-varbindlist => [$next], 
+												-maxrepetitions => 10, 
+												-callback => [\&filter_cb, $np, $mode, $base_oid, $total_items, $filters]);
+			$np->nagios_die("filter_cb:" . $snmp_session->error()) if (!defined $result);
+		}
+		else {
+			print($np->opts->hostname . ":Maximum number of items reach:" . $np->opts->max_item . "\n");
+			save_cached($np, $np->opts->hostname, $mode, $filters);
+		}
+		
+	} else {
+		# We are no longer in the table, so print the results.
+		# foreach my $oid (oid_lex_sort(keys(%{$filters}))) {
+		# 	printf("%s => %s\n", $oid, $filters->{$oid});
+		# }	
+		save_cached($np, $np->opts->hostname, $mode, $filters);
+		print("End of response\n");
+	}
+}
+
+sub get_filter_list($$$$$)
+{
+    my $np = shift or die;
+	my $snmp_session = shift or die;
+	my $mode = shift or die;
+	my $nonblocking = shift or die;
+    my $base_oid = shift or die;
+	my $total_items = 0;
+	my $cached_info = get_cached($np, $np->opts->hostname, $mode);
+	my $filters = {};
+	my $next = $base_oid;
+	if (defined $cached_info) {
+		$filters = $cached_info;
+		foreach my $oid (oid_lex_sort(keys(%{$cached_info}))) {
+			if (!oid_base_match($base_oid, $oid)) {
+				last;
+			}
+			$next = $oid; 
+		}
+	}
+
+	$total_items = keys %{$filters};
+    my $result = $snmp_session->get_bulk_request(-varbindlist => [$next], 
+											 -maxrepetitions => 10, 
+											 -callback => [\&filter_cb, $np, $mode, $base_oid, $total_items, $filters]);
+	$np->nagios_die("get_filter_list:" . $snmp_session->error()) if (!defined $result);
+	snmp_dispatcher();
+	$snmp_session->close();
+}	
 
 sub get_filterid($$$$)
 {
@@ -425,6 +504,12 @@ $np->add_arg(
 	default => 161,
 );
 
+$np->add_arg(
+	spec => 'nonblocking',
+	help => "Non-blocking mode",
+	
+);
+
 # IPv4/IPv6
 
 $np->add_arg(
@@ -530,6 +615,12 @@ $np->add_arg(
 	help => "Filter index",
 );
 
+$np->add_arg(
+	spec => 'max_item=s',
+	help => "Maximum number of items per query",
+	default => 50,
+);
+
 
 # Upload Threshold
 $np->add_arg(
@@ -598,7 +689,11 @@ if (defined $np->opts->ipv6)
 #----------------------------------------
 # SNMP Session
 #----------------------------------------
-
+my $nonblocking = 0;
+if (defined $np->opts->nonblocking)
+{ 
+	$nonblocking = 1;
+}
 
 my ($snmp_session, $snmp_error);
 
@@ -609,11 +704,13 @@ if ($np->opts->protocol eq '1'
 	($snmp_session, $snmp_error) = Net::SNMP->session(
 		-hostname => $np->opts->hostname,
 		-port => $np->opts->port,
+		-nonblocking  => $nonblocking,
 		-domain => $domain,
 		-version => ($np->opts->protocol eq '2c' ? '2' : $np->opts->protocol),
 		-community => $np->opts->community,
 		-translate => [-octetstring => 0x0],
 	);
+	
 }
 elsif ($np->opts->protocol eq '3')
 {
@@ -670,13 +767,13 @@ if ($np->opts->mode eq "list-upload-filter")
 {
     # my $str = oid_to_ascii('.12.73.80.84.45.84.101.115.116.49.45.85.80.20.49.48.77.45.73.80.84.45.84.101.115.116.49.45.73.71.87.45.85.80.3');
     # print($str);
-	get_filter_list($np, $snmp_session, $OIDS_UPLOAD_QOS->{jnxFWCounterDisplayName});
+	get_filter_list($np, $snmp_session, "list-upload", $nonblocking, $OIDS_UPLOAD_QOS->{jnxFWCounterDisplayName});
 }
 elsif ($np->opts->mode eq "list-download-filter")
 {
     # my $str = oid_to_ascii('.588.2.3.73.88.80');
     # print($str);
-	get_filter_list($np, $snmp_session, $OIDS_DOWNLOAD_QOS->{jnxScuStatsClName});
+	get_filter_list($np, $snmp_session, "list-download", $nonblocking, $OIDS_DOWNLOAD_QOS->{jnxScuStatsClName});
 }
 elsif ($np->opts->mode eq "upload")
 {
