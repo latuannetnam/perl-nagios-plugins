@@ -23,6 +23,7 @@ use Nagios::Monitoring::Plugin;
 use Net::SNMP qw(:snmp);
 use Data::Dumper;
 use Net::Ping;
+use Storable;
 
 my $STATEDIR = '/var/tmp';
 
@@ -91,7 +92,7 @@ sub sanitize_alias($)
 	return $name;
 }
 
-sub get_cached($$$)
+sub get_cached_old($$$)
 {
 	my $np = shift or die;
 	my $hostname = shift or die;
@@ -111,8 +112,19 @@ sub get_cached($$$)
 	my $data = eval($content);
 	$np->nagios_die("invalid data in datafile '$datafile': $@") if $@;
 	return $data;
+}
 
-	return undef;
+sub get_cached($$$)
+{
+	my $np = shift or die;
+	my $hostname = shift or die;
+	my $filter = shift or die;
+	my $fd;
+	my $datafile = $np->opts->datadir . '/check_juniper_qos/' . $hostname . '/' . $filter . '.dat';
+	
+	return undef if (!-e $datafile);
+	my $data = retrieve($datafile);
+	return $data;
 }
 
 sub save_cached($$$$)
@@ -136,17 +148,18 @@ sub save_cached($$$$)
 
 	my $datafile = $np->opts->datadir . '/check_juniper_qos/' . $hostname . '/' . $filter . '.dat';
 	
-	if (!open($fd, '>', $datafile . '.new'))
-	{
-		$np->nagios_die("unable to open datafile '$datafile.new': $!");
-	}
+	# if (!open($fd, '>', $datafile . '.new'))
+	# {
+	# 	$np->nagios_die("unable to open datafile '$datafile.new': $!");
+	# }
 
-	print $fd Data::Dumper->new([$filterinfo])->Terse(1)->Purity(1)->Dump();
-	close($fd);
-	if (!rename($datafile . '.new', $datafile))
-	{
-		$np->nagios_die("unable to rename datafile '$datafile.new' to '$datafile': $!");
-	}
+	# print $fd Data::Dumper->new([$filterinfo])->Terse(1)->Purity(1)->Useqq(1)->Dump();
+	# close($fd);
+	# if (!rename($datafile . '.new', $datafile))
+	# {
+	# 	$np->nagios_die("unable to rename datafile '$datafile.new' to '$datafile': $!");
+	# }
+	store $filterinfo, $datafile;
 }
 
 
@@ -179,39 +192,59 @@ sub get_filter_list_blocking($$$$)
 	$np->nagios_exit($exit_code, $exit_message);
 }
 
+sub print_filter_list($$$)
+{
+	my $np = shift or die;
+	my $base_oid  = shift or die;
+	my $filters = shift or die;
+	foreach my $item (sort {$filters->{$a} cmp $filters->{$b}} keys %$filters)
+	{
+		if (!$np->opts->noperfdata) {
+			my $filterID  = substr($item, length($base_oid) + 1 , length($item) - length($base_oid) - 1 );
+        	$np->add_perfdata(label => "$filters->{$item}|$filterID", 
+                value => 1, 
+                );
+		}
+
+        
+    }
+}
+
 sub filter_cb($$)
 {
 	my ($snmp_session, $np, $mode, $base_oid, $total_items, $filters) = @_;
 	$np->nagios_die("filter_cb:" . $snmp_session->error()) if (!defined $snmp_session->var_bind_list);
-	print("Next result:\n");
 	my $next;
-	# my $base_oid = $OIDS_UPLOAD_QOS->{jnxFWCounterDisplayName};
 	my $size = keys %{$snmp_session->var_bind_list};
 	$total_items += $size;
-	print("Total items: $total_items \n");
-	
 	foreach my $oid (oid_lex_sort(keys(%{$snmp_session->var_bind_list}))) {
-		print("$oid: " . $snmp_session->var_bind_list->{$oid} . "\n");
+		# print("$oid: " . $snmp_session->var_bind_list->{$oid} . "\n");
 		if (!oid_base_match($base_oid, $oid)) {
 			$next = undef;
 			last;
 		}
 		$next = $oid; 
 		$filters->{$oid} = $snmp_session->var_bind_list->{$oid};
-		
 	}
 	# If $next is defined we need to send another request 
 		# to get more of the table.
 	if (defined($next)) {
 		if ($total_items < $np->opts->max_item) {
 			my $result = $snmp_session->get_bulk_request(-varbindlist => [$next], 
-												-maxrepetitions => 10, 
+												-maxrepetitions => 5, 
 												-callback => [\&filter_cb, $np, $mode, $base_oid, $total_items, $filters]);
 			$np->nagios_die("filter_cb:" . $snmp_session->error()) if (!defined $result);
 		}
 		else {
-			print($np->opts->hostname . ":Maximum number of items reach:" . $np->opts->max_item . "\n");
 			save_cached($np, $np->opts->hostname, $mode, $filters);
+			my $total_all_items = keys %{$filters};
+			my $message = "Total items: " . $total_all_items;
+			$message .= ". Maximum number of items/session reach: " . $np->opts->max_item;
+			$message .= ". Please re-query to get next items";
+			$np->add_message(WARNING,$message);
+			print_filter_list($np, $base_oid, $filters);
+			my ($exit_code, $exit_message) = $np->check_messages();
+			$np->nagios_exit($exit_code, $exit_message);
 		}
 		
 	} else {
@@ -220,7 +253,13 @@ sub filter_cb($$)
 		# 	printf("%s => %s\n", $oid, $filters->{$oid});
 		# }	
 		save_cached($np, $np->opts->hostname, $mode, $filters);
-		print("End of response\n");
+		my $total_all_items = keys %{$filters};
+		my $message = "Total items: " . $total_all_items;
+		$np->add_message(OK,$message);
+		print_filter_list($np, $base_oid, $filters);
+		my ($exit_code, $exit_message) = $np->check_messages();
+		$np->nagios_exit($exit_code, $exit_message);
+		
 	}
 }
 
@@ -244,10 +283,9 @@ sub get_filter_list($$$$$)
 			$next = $oid; 
 		}
 	}
-
-	$total_items = keys %{$filters};
+	
     my $result = $snmp_session->get_bulk_request(-varbindlist => [$next], 
-											 -maxrepetitions => 10, 
+											 -maxrepetitions => 5, 
 											 -callback => [\&filter_cb, $np, $mode, $base_oid, $total_items, $filters]);
 	$np->nagios_die("get_filter_list:" . $snmp_session->error()) if (!defined $result);
 	snmp_dispatcher();
@@ -618,7 +656,7 @@ $np->add_arg(
 $np->add_arg(
 	spec => 'max_item=s',
 	help => "Maximum number of items per query",
-	default => 50,
+	default => 500,
 );
 
 
