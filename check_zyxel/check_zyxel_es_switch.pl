@@ -262,7 +262,7 @@ sub get_power($$) {
 		{
 			$np->add_perfdata(label => "voltage_" . $index, 
 							  value => $power_info->{'value'},
-							  max => $power_info->{'min'},
+							  min => $power_info->{'min'},
 							  critical => $power_info->{'min'} . ":"
 							  );
 		}
