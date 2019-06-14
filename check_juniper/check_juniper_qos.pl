@@ -92,28 +92,6 @@ sub sanitize_alias($)
 	return $name;
 }
 
-sub get_cached_old($$$)
-{
-	my $np = shift or die;
-	my $hostname = shift or die;
-	my $filter = shift or die;
-	my $fd;
-	my $datafile = $np->opts->datadir . '/check_juniper_qos/' . $hostname . '/' . $filter . '.dat';
-	
-	return undef if (!-e $datafile);
-
-	if (!open($fd, '<', $datafile))
-	{
-		$np->nagios_die("unable to open datafile '$datafile': $!");
-	}
-	read($fd, my $content, 8192);
-	close($fd);
-
-	my $data = eval($content);
-	$np->nagios_die("invalid data in datafile '$datafile': $@") if $@;
-	return $data;
-}
-
 sub get_cached($$$)
 {
 	my $np = shift or die;
@@ -197,7 +175,8 @@ sub print_filter_list($$$)
 	my $np = shift or die;
 	my $base_oid  = shift or die;
 	my $filters = shift or die;
-	foreach my $item (sort {$filters->{$a} cmp $filters->{$b}} keys %$filters)
+	# foreach my $item (sort {$filters->{$a} cmp $filters->{$b}} keys %$filters)
+	foreach my $item (sort keys %$filters)
 	{
 		if (!$np->opts->noperfdata) {
 			my $filterID  = substr($item, length($base_oid) + 1 , length($item) - length($base_oid) - 1 );
@@ -409,7 +388,6 @@ sub get_upload_qos($$$)
 
     if (($code = $np->check_threshold(check => $bps, warning => $np->opts->w_upload_bps, critical => $np->opts->c_upload_bps)) != OK)
     {
-        
         $np->add_message($code, ' [UPLOAD BPS]');
     }
     if (($code = $np->check_threshold(check => $pps, warning => $np->opts->w_upload_pps, critical => $np->opts->c_upload_pps)) != OK)
