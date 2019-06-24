@@ -344,7 +344,7 @@ sub get_fan($$) {
 	my $fan_pool = {};
 	foreach my $oid (keys %$result) {
 		my $index =get_index_from_oid($oid);
-		print("$index: " . $result->{$oid} . "\n");
+		# print("$index: " . $result->{$oid} . "\n");
 		my $fan_info = $fan_pool->{$index};
 		if (!defined $fan_info) {
 			$fan_info = {};
