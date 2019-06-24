@@ -170,23 +170,47 @@ sub get_filter_list_blocking($$$$)
 	$np->nagios_exit($exit_code, $exit_message);
 }
 
-sub print_filter_list($$$)
+sub get_counter_string($$)
+{	
+	my $mode = shift or die;
+	my $item = shift or die;
+	if ($mode eq "list-upload"  || $mode eq "upload") {
+		if ($item =~m/^\.1\.3\.6\.1\.4\.1\.2636\.3\.5\.2\.1\.4\.(\d+).*\.\d+$/i){ #Find the length of the filter string
+			if ($item =~m/^\.1\.3\.6\.1\.4\.1\.2636\.3\.5\.2\.1\.4\.(\d+)((\.\d+){$1})\.(\d+).*\.\d+$/i){ #Find the filter string and the length of te Counter string
+				if ($item =~m/^\.1\.3\.6\.1\.4\.1\.2636\.3\.5\.2\.1\.4\.(\d+)((\.\d+){$1})\.(\d+)((\.\d+){$4})\.(\d)$/i){ # Find the Counter string
+					my $counterType = $7;
+					my $filter = oid_to_ascii($2);
+					my $counter = oid_to_ascii($5);
+					# print("$filter:$counter:$counterType:$filterID\n");
+					return $counter;
+				}
+			}
+		}
+	}	
+	return "Unknown";		
+}
+
+
+sub print_filter_list($$$$)
 {
 	my $np = shift or die;
+	my $mode = shift or die;
 	my $base_oid  = shift or die;
 	my $filters = shift or die;
 	# foreach my $item (sort {$filters->{$a} cmp $filters->{$b}} keys %$filters)
 	foreach my $item (sort keys %$filters)
 	{
 		if (!$np->opts->noperfdata) {
+			my $value = $filters->{$item};
+			# print("$item:$value \n");
+			my $counter = get_counter_string($mode, $item);
 			my $filterID  = substr($item, length($base_oid) + 1 , length($item) - length($base_oid) - 1 );
-			print("$filters->{$item}:" . oid_to_ascii($filterID) . "\n");
-        	$np->add_perfdata(label => "$filters->{$item}|$filterID", 
+			# print("$counter:$filterID\n");
+        	$np->add_perfdata(label => "$counter|$filterID", 
                 value => 1, 
                 );
 		}
 
-        
     }
 }
 
@@ -222,7 +246,7 @@ sub filter_cb($$)
 			$message .= ". Maximum number of items/session reach: " . $np->opts->max_item;
 			$message .= ". Please re-query to get next items";
 			$np->add_message(WARNING,$message);
-			print_filter_list($np, $base_oid, $filters);
+			print_filter_list($np, $mode, $base_oid, $filters);
 			my ($exit_code, $exit_message) = $np->check_messages();
 			$np->nagios_exit($exit_code, $exit_message);
 		}
@@ -236,7 +260,7 @@ sub filter_cb($$)
 		my $total_all_items = keys %{$filters};
 		my $message = "Total items: " . $total_all_items;
 		$np->add_message(OK,$message);
-		print_filter_list($np, $base_oid, $filters);
+		print_filter_list($np, $mode, $base_oid, $filters);
 		my ($exit_code, $exit_message) = $np->check_messages();
 		$np->nagios_exit($exit_code, $exit_message);
 		
@@ -327,11 +351,14 @@ sub get_upload_qos($$$)
 	my $snmp_session = shift or die;
     my $filterid = shift or die;
     my $oids = $OIDS_UPLOAD_QOS;
+	my $mode = "upload";
     # Get Cached Filter Info
     my $cached_info = get_cached($np, $np->opts->hostname, 'upload-' . $filterid);
     my $info = get_qos_info($np, $snmp_session, $filterid, $OIDS_UPLOAD_QOS);
     $info->{time} = time;
     $info->{uploadFilterId} = $filterid;
+	my $item = $OIDS_UPLOAD_QOS->{jnxFWCounterPacketCount} . "." . $filterid;
+	my $counter = get_counter_string($mode, $item);
     save_cached($np, $np->opts->hostname, 'upload-' . $filterid, $info);
 
     #----------------------------------------
@@ -373,7 +400,8 @@ sub get_upload_qos($$$)
 
     my $metrics;
     
-    $metrics = sprintf("$info->{jnxFWCounterDisplayName} upload %s / %s",
+    # $metrics = sprintf("$info->{jnxFWCounterDisplayName} upload %s / %s",
+	$metrics = sprintf("$counter upload %s / %s",
         unit_value($bps, 'bps', 1024),
         unit_value($pps, 'pps'),
     );
@@ -781,15 +809,15 @@ if (defined $np->opts->modes)
 # Plugin mode
 #----------------------------------------
 
-my $str = oid_to_ascii('10.80.82.79.84.69.67.84.45.82.69.10.77.80.76.83.45.84.82.65.67.69');
-print($str);
-exit(1);
+# my $str = oid_to_ascii('10.80.82.79.84.69.67.84.45.82.69.10.77.80.76.83.45.84.82.65.67.69');
+# print($str);
+# exit(1);
 
 if ($np->opts->mode eq "list-upload-filter")
 {
     # my $str = oid_to_ascii('.12.73.80.84.45.84.101.115.116.49.45.85.80.20.49.48.77.45.73.80.84.45.84.101.115.116.49.45.73.71.87.45.85.80.3');
     # print($str);
-	get_filter_list($np, $snmp_session, "list-upload", $nonblocking, $OIDS_UPLOAD_QOS->{jnxFWCounterDisplayName});
+	get_filter_list($np, $snmp_session, "list-upload", $nonblocking, $OIDS_UPLOAD_QOS->{jnxFWCounterPacketCount});
 }
 elsif ($np->opts->mode eq "list-download-filter")
 {
