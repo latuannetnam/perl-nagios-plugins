@@ -180,6 +180,7 @@ sub print_filter_list($$$)
 	{
 		if (!$np->opts->noperfdata) {
 			my $filterID  = substr($item, length($base_oid) + 1 , length($item) - length($base_oid) - 1 );
+			print("$filters->{$item}:" . oid_to_ascii($filterID) . "\n");
         	$np->add_perfdata(label => "$filters->{$item}|$filterID", 
                 value => 1, 
                 );
@@ -779,6 +780,11 @@ if (defined $np->opts->modes)
 #----------------------------------------
 # Plugin mode
 #----------------------------------------
+
+my $str = oid_to_ascii('10.80.82.79.84.69.67.84.45.82.69.10.77.80.76.83.45.84.82.65.67.69');
+print($str);
+exit(1);
+
 if ($np->opts->mode eq "list-upload-filter")
 {
     # my $str = oid_to_ascii('.12.73.80.84.45.84.101.115.116.49.45.85.80.20.49.48.77.45.73.80.84.45.84.101.115.116.49.45.73.71.87.45.85.80.3');

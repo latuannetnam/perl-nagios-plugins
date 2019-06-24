@@ -26,22 +26,38 @@ use Net::Ping;
 use Storable;
 
 my $STATEDIR = '/var/tmp';
-my $OIDS_MEMORY = {
+my $OIDS_MEMORY_MES3500_24F = {
    sysMemoryPoolName => '.1.3.6.1.4.1.890.1.5.8.57.124.1.1.2',
    sysMemoryPoolUsed => '.1.3.6.1.4.1.890.1.5.8.57.124.1.1.4',
    sysMemoryPoolUtil => '.1.3.6.1.4.1.890.1.5.8.57.124.1.1.5',
    sysMemoryPoolTotal => '.1.3.6.1.4.1.890.1.5.8.57.124.1.1.3',
 };
 
-my $OIDS_TEMPERATURE = {
+my $OIDS_TEMPERATURE_MES3500_24F = {
    tempCurValue => '.1.3.6.1.4.1.890.1.5.8.57.9.2.1.2',
    tempHighThresh => '.1.3.6.1.4.1.890.1.5.8.57.9.2.1.5',
 };
 
-my $OIDS_POWER = {
+my $OIDS_POWER_MES3500_24F = {
    voltageCurValue => '.1.3.6.1.4.1.890.1.5.8.57.9.3.1.2',
    voltageLowThresh => '.1.3.6.1.4.1.890.1.5.8.57.9.3.1.6',
    voltageNominalValue => '.1.3.6.1.4.1.890.1.5.8.57.9.3.1.5',
+};
+
+my $OIDS_TEMPERATURE_ES_3124F = {
+   tempCurValue => '.1.3.6.1.4.1.890.1.5.8.31.9.2.1.2',
+   tempHighThresh => '.1.3.6.1.4.1.890.1.5.8.31.9.2.1.5',
+};
+
+my $OIDS_POWER_ES_3124F = {
+   voltageCurValue => '.1.3.6.1.4.1.890.1.5.8.31.9.3.1.2',
+   voltageLowThresh => '.1.3.6.1.4.1.890.1.5.8.31.9.3.1.6',
+   voltageNominalValue => '.1.3.6.1.4.1.890.1.5.8.31.9.3.1.5',
+};
+
+my $OIDS_FAN_ES_3124F = {
+   fanRpmCurValue => '.1.3.6.1.4.1.890.1.5.8.31.9.1.1.2',	
+   fanRpmLowThresh => '.1.3.6.1.4.1.890.1.5.8.31.9.1.1.5',
 };
 
 #----------------------------------------
@@ -59,8 +75,13 @@ sub get_memory($$) {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
 	my @oids_list = ();
-	my $oids = $OIDS_MEMORY;
-	
+	my $oids;
+	if ($np->opts->model eq "MES3500-24F") {
+		 $oids = $OIDS_MEMORY_MES3500_24F;
+	}
+	else {
+		$np->nagios_die("get_memory: Unsupported model");
+	}	 	
 	foreach my $item (keys %$oids)
 	{
 		push @oids_list, "$oids->{$item}";
@@ -78,20 +99,20 @@ sub get_memory($$) {
 		if (!defined $memory_info) {
 			$memory_info = {};
 		}
-		if (oid_base_match($OIDS_MEMORY->{sysMemoryPoolName}, $oid)) {
+		if (oid_base_match($oids->{sysMemoryPoolName}, $oid)) {
 			# print("pool name:" . $result->{$oid} . "\n");
 			$memory_info->{'name'}  = $result->{$oid};
 		}
-		elsif (oid_base_match($OIDS_MEMORY->{sysMemoryPoolUsed}, $oid)) {
+		elsif (oid_base_match($oids->{sysMemoryPoolUsed}, $oid)) {
 			# print("memory used:" . $result->{$oid} . "\n");
 			$memory_info->{'value'}  = $result->{$oid};
 		}
-		elsif (oid_base_match($OIDS_MEMORY->{sysMemoryPoolUtil}, $oid)) {
+		elsif (oid_base_match($oids->{sysMemoryPoolUtil}, $oid)) {
 			# print("memory used:" . $result->{$oid} . "\n");
 			$memory_info->{'percent'}  = $result->{$oid};
 			$memory_avg += $result->{$oid};
 		}
-		elsif (oid_base_match($OIDS_MEMORY->{sysMemoryPoolTotal}, $oid)) {
+		elsif (oid_base_match($oids->{sysMemoryPoolTotal}, $oid)) {
 			# print("memory total:" . $result->{$oid} . "\n");
 			$memory_info->{'max'}  = $result->{$oid};
 		}
@@ -101,11 +122,11 @@ sub get_memory($$) {
 	my $size = keys %$memory_pool;
 	$memory_avg = int($memory_avg/$size);
 	#----------------------------------------
-    # Metrics Summary
-    #----------------------------------------
-    my $metrics = "avg memory used  $memory_avg%";
-    my $code;
-    my $prefix = "";
+	# Metrics Summary
+	#----------------------------------------
+	my $metrics = "avg memory used  $memory_avg%";
+	my $code;
+	my $prefix = "";
 	$np->add_message(OK,'');
 	
 	foreach my $index (keys %$memory_pool)
@@ -117,10 +138,10 @@ sub get_memory($$) {
 		if (!$np->opts->noperfdata)
 		{
 			$np->add_perfdata(label => "memory_" . $memory_info->{'name'}, 
-							  value => $memory_info->{'value'},
-							  max => $memory_info->{'max'},
-				 			  warning => $np->opts->w_memory, 
-							  critical => $np->opts->c_memory);
+							value => $memory_info->{'value'},
+							max => $memory_info->{'max'},
+							warning => $np->opts->w_memory, 
+							critical => $np->opts->c_memory);
 		}
 		#----------------------------------------
 		# Status Checks
@@ -134,16 +155,26 @@ sub get_memory($$) {
 	}
 
 	my ($exit_code, $exit_message) = $np->check_messages();
-    $exit_message = $prefix . join(' ', ($exit_message, $metrics));
-    $exit_message =~ s/^ *//;
-    $np->nagios_exit($exit_code, $exit_message);
+	$exit_message = $prefix . join(' ', ($exit_message, $metrics));
+	$exit_message =~ s/^ *//;
+	$np->nagios_exit($exit_code, $exit_message);    
 }
 
 sub get_temperature($$) {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
 	my @oids_list = ();
-	my $oids = $OIDS_TEMPERATURE;
+	my $oids;
+	if ($np->opts->model eq "MES3500-24F") {
+		$oids = $OIDS_TEMPERATURE_MES3500_24F;
+	}
+	elsif  ($np->opts->model eq "ES-3124F") {
+		$oids = $OIDS_TEMPERATURE_ES_3124F;
+	}
+	else {
+		$np->nagios_die("get_temperature: Unsupported model");
+	}
+
 	
 	foreach my $item (keys %$oids)
 	{
@@ -162,10 +193,10 @@ sub get_temperature($$) {
 			$temperature_info = {};
 		}
 		
-		if (oid_base_match($OIDS_TEMPERATURE->{tempCurValue}, $oid)) {
+		if (oid_base_match($oids->{tempCurValue}, $oid)) {
 			$temperature_info->{'value'}  = $result->{$oid};
 		}
-		elsif (oid_base_match($OIDS_TEMPERATURE->{tempHighThresh}, $oid)) {
+		elsif (oid_base_match($oids->{tempHighThresh}, $oid)) {
 			# print("temperature total:" . $result->{$oid} . "\n");
 			$temperature_info->{'max'}  = $result->{$oid};
 		}
@@ -214,7 +245,16 @@ sub get_power($$) {
 	my $np = shift or die;
 	my $snmp_session = shift or die;
 	my @oids_list = ();
-	my $oids = $OIDS_POWER;
+	my $oids;
+	if ($np->opts->model eq "MES3500-24F") {
+		$oids = $OIDS_POWER_MES3500_24F;}
+
+	elsif  ($np->opts->model eq "ES-3124F") {
+		$oids = $OIDS_POWER_ES_3124F;
+	}
+	else {
+		$np->nagios_die("get_power: Unsupported model");
+	}	
 	
 	foreach my $item (keys %$oids)
 	{
@@ -233,10 +273,10 @@ sub get_power($$) {
 			$power_info = {};
 		}
 		
-		if (oid_base_match($OIDS_POWER->{voltageCurValue}, $oid)) {
+		if (oid_base_match($oids->{voltageCurValue}, $oid)) {
 			$power_info->{'value'}  = $result->{$oid}/1000;
 		}
-		elsif (oid_base_match($OIDS_POWER->{voltageLowThresh}, $oid)) {
+		elsif (oid_base_match($oids->{voltageLowThresh}, $oid)) {
 			# print("power total:" . $result->{$oid} . "\n");
 			$power_info->{'min'}  = $result->{$oid}/1000;
 		}
@@ -273,6 +313,82 @@ sub get_power($$) {
 				critical => $power_info->{'min'} . ":")) != OK)
 		{
 			$np->add_message($code, " [voltage_" . $index . "] ");
+		}
+	}
+
+	my ($exit_code, $exit_message) = $np->check_messages();
+    $exit_message = $prefix . join(' ', ($exit_message, $metrics));
+    $exit_message =~ s/^ *//;
+    $np->nagios_exit($exit_code, $exit_message);
+}
+
+sub get_fan($$) {
+	my $np = shift or die;
+	my $snmp_session = shift or die;
+	my @oids_list = ();
+	my $oids;
+	if  ($np->opts->model eq "ES-3124F") {
+		$oids = $OIDS_FAN_ES_3124F;
+	}
+	else {
+		$np->nagios_die("get_fan: Unsupported model");
+	}	
+	
+	foreach my $item (keys %$oids)
+	{
+		push @oids_list, "$oids->{$item}";
+	}
+	my $result = $snmp_session->get_entries(-columns => [@oids_list], -maxrepetitions => 10);
+	$np->nagios_die("get_fan:" . $snmp_session->error()) if (!defined $result);
+	$snmp_session->close();
+	my $fan_pool = {};
+	foreach my $oid (keys %$result) {
+		my $index =get_index_from_oid($oid);
+		print("$index: " . $result->{$oid} . "\n");
+		my $fan_info = $fan_pool->{$index};
+		if (!defined $fan_info) {
+			$fan_info = {};
+		}
+		
+		if (oid_base_match($oids->{ fanRpmCurValue}, $oid)) {
+			$fan_info->{'value'}  = $result->{$oid};
+		}
+		elsif (oid_base_match($oids->{ fanRpmLowThresh}, $oid)) {
+			$fan_info->{'min'}  = $result->{$oid};
+		}
+		$fan_pool->{$index} = $fan_info;
+	}
+	# print(Data::Dumper->new([$fan_pool])->Terse(1)->Purity(1)->Useqq(1)->Dump());
+	
+	#----------------------------------------
+    # Metrics Summary
+    #----------------------------------------
+    my $metrics = "";
+    my $code;
+    my $prefix = "";
+	$np->add_message(OK,'');
+	
+	foreach my $index (sort keys %$fan_pool)
+	{
+		#----------------------------------------
+		# Perf data
+		#----------------------------------------
+		my $fan_info = $fan_pool->{$index};
+		if (!$np->opts->noperfdata)
+		{
+			$np->add_perfdata(label => "fan_" . $index, 
+							  value => $fan_info->{'value'},
+							  min => $fan_info->{'min'},
+							  critical => $fan_info->{'min'} . ":"
+							  );
+		}
+		#----------------------------------------
+		# Status Checks
+		#----------------------------------------
+		if (($code = $np->check_threshold(check => $fan_info->{'value'}, 
+				critical => $fan_info->{'min'} . ":")) != OK)
+		{
+			$np->add_message($code, " [fan_" . $index . "] ");
 		}
 	}
 
@@ -404,9 +520,16 @@ $np->add_arg(
 
 $np->add_arg(
 	spec => 'mode|m=s',
-	help => "-m, --mode\n   Check modes.",
+	help => "-m, --mode\n   Check modes: memory, temperature, power, fan.",
 	required => 1,
 	default => 'memory',
+);
+
+$np->add_arg(
+	spec => 'model=s',
+	help => "Zyxel model: MES3500-24F,ES-3124F ",
+	required => 1,
+	default => 'MES3500-24F',
 );
 
 #Thresholds
@@ -517,4 +640,8 @@ elsif ($np->opts->mode eq "temperature")
 elsif ($np->opts->mode eq "power")
 {
 	get_power($np, $snmp_session);
+}
+elsif ($np->opts->mode eq "fan")
+{
+	get_fan($np, $snmp_session);
 }
