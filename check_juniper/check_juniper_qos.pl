@@ -39,6 +39,7 @@ my $OIDS_DOWNLOAD_QOS = {
     jnxScuStatsBytes => '.1.3.6.1.4.1.2636.3.16.1.1.1.5', 
 };
 
+my $MAX_DISPLAY = 10;
 
 #----------------------------------------
 # Sub/functions
@@ -208,6 +209,7 @@ sub print_filter_list($$$$)
 	my $base_oid  = shift or die;
 	my $filters = shift or die;
 	my @perfdata;
+	my $message = "";
 	if (!$np->opts->noperfdata)
 	{
 		foreach my $item (keys %$filters)
@@ -219,19 +221,44 @@ sub print_filter_list($$$$)
 				my $filterID  = substr($item, length($base_oid) + 1 , length($item) - length($base_oid) - 1 );
 				my $data = "$counter|$filterID";
 				push @perfdata, $data;
-				# print("$counter:$filterID\n");
+				
 			}
-
 		}
 		
 		@perfdata = sort(@perfdata);
+		my $count = 0;
 		for my $item (@perfdata) {
-			$np->add_perfdata(label => $item, 
-					value => 1, 
-					);
+			# $np->add_perfdata(label => $item, 
+			# 		value => 1, 
+			# 		);
+			$count++;
+			$message .= "$item \n"; 
 		}
-		
 	}	
+	return $message;
+}
+
+sub save_filter_list($$$) {
+	my $np = shift or die;
+	my $mode = shift or die;
+	my $filter_str = shift or die;
+	my $hostname = $np->opts->hostname;
+	if (! -d ($np->opts->datadir . '/check_juniper_qos/' . $hostname))
+	{
+		if (! -d ($np->opts->datadir . '/check_juniper_qos'))
+		{
+			mkdir $np->opts->datadir . '/check_juniper_qos'
+				or $np->nagios_die($!);
+		}
+		mkdir $np->opts->datadir . '/check_juniper_qos/' . $hostname
+			or $np->nagios_die($!);
+	}
+	
+	my $datafile = $np->opts->datadir . '/check_juniper_qos/' . $hostname . '/' . $mode . '-filters.txt';
+	open(DATA, ">$datafile") or die "Couldn't open file datafile, $!";
+	print DATA $filter_str;
+	close(DATA);
+	return $datafile;
 }
 
 sub filter_cb($$)
@@ -264,9 +291,9 @@ sub filter_cb($$)
 			my $total_all_items = keys %{$filters};
 			my $message = "Total items: " . $total_all_items;
 			$message .= ". Maximum number of items/session reach: " . $np->opts->max_item;
-			$message .= ". Please re-query to get next items";
+			$message .= ". Please re-query to get next items \n";
+			# $message .= print_filter_list($np, $mode, $base_oid, $filters);
 			$np->add_message(WARNING,$message);
-			print_filter_list($np, $mode, $base_oid, $filters);
 			my ($exit_code, $exit_message) = $np->check_messages();
 			$np->nagios_exit($exit_code, $exit_message);
 		}
@@ -278,9 +305,12 @@ sub filter_cb($$)
 		# }	
 		save_cached($np, $np->opts->hostname, $mode, $filters);
 		my $total_all_items = keys %{$filters};
-		my $message = "Total items: " . $total_all_items;
+		my $message = "Total items: " . $total_all_items . "\n";
+		my $filter_str = print_filter_list($np, $mode, $base_oid, $filters);
+		my $datafile = save_filter_list($np, $mode, $filter_str);
+		$message .= "Filter file: $datafile";
 		$np->add_message(OK,$message);
-		print_filter_list($np, $mode, $base_oid, $filters);
+		
 		my ($exit_code, $exit_message) = $np->check_messages();
 		$np->nagios_exit($exit_code, $exit_message);
 		
