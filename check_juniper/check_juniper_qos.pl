@@ -207,21 +207,31 @@ sub print_filter_list($$$$)
 	my $mode = shift or die;
 	my $base_oid  = shift or die;
 	my $filters = shift or die;
-	# foreach my $item (sort {$filters->{$a} cmp $filters->{$b}} keys %$filters)
-	foreach my $item (sort keys %$filters)
+	my @perfdata;
+	if (!$np->opts->noperfdata)
 	{
-		if (!$np->opts->noperfdata) {
-			my $value = $filters->{$item};
-			# print("$item:$value \n");
-			my $counter = get_counter_string($mode, $item);
-			my $filterID  = substr($item, length($base_oid) + 1 , length($item) - length($base_oid) - 1 );
-			# print("$counter:$filterID\n");
-        	$np->add_perfdata(label => "$counter|$filterID", 
-                value => 1, 
-                );
-		}
+		foreach my $item (keys %$filters)
+		{
+			{
+				my $value = $filters->{$item};
+				# print("$item:$value \n");
+				my $counter = get_counter_string($mode, $item);
+				my $filterID  = substr($item, length($base_oid) + 1 , length($item) - length($base_oid) - 1 );
+				my $data = "$counter|$filterID";
+				push @perfdata, $data;
+				# print("$counter:$filterID\n");
+			}
 
-    }
+		}
+		
+		@perfdata = sort(@perfdata);
+		for my $item (@perfdata) {
+			$np->add_perfdata(label => $item, 
+					value => 1, 
+					);
+		}
+		
+	}	
 }
 
 sub filter_cb($$)
