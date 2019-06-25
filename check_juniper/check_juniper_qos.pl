@@ -186,6 +186,16 @@ sub get_counter_string($$)
 				}
 			}
 		}
+	}
+	else {
+		if ($item =~m/^\.1\.3\.6\.1\.4\.1\.2636\.3\.16\.1\.1\.1\.4\.(\d+).*\.\d+$/i){ #Find the length of the filter string
+			if ($item =~m/^\.1\.3\.6\.1\.4\.1\.2636\.3\.16\.1\.1\.1\.4\.(\d+)\.(\d+)\.(\d+)\.(.*\.\d+)$/i){ # Find the Counter string
+				my $counter = oid_to_ascii($4);
+				# print("$counter:$4\n");
+				return $counter;
+			}
+		}
+
 	}	
 	return "Unknown";		
 }
@@ -809,7 +819,7 @@ if (defined $np->opts->modes)
 # Plugin mode
 #----------------------------------------
 
-# my $str = oid_to_ascii('10.80.82.79.84.69.67.84.45.82.69.10.77.80.76.83.45.84.82.65.67.69');
+# my $str = oid_to_ascii('73.88.80.45.73.80.118.54');
 # print($str);
 # exit(1);
 
@@ -823,7 +833,7 @@ elsif ($np->opts->mode eq "list-download-filter")
 {
     # my $str = oid_to_ascii('.588.2.3.73.88.80');
     # print($str);
-	get_filter_list($np, $snmp_session, "list-download", $nonblocking, $OIDS_DOWNLOAD_QOS->{jnxScuStatsClName});
+	get_filter_list($np, $snmp_session, "list-download", $nonblocking, $OIDS_DOWNLOAD_QOS->{jnxScuStatsPackets});
 }
 elsif ($np->opts->mode eq "upload")
 {
