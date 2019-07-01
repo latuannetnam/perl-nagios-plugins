@@ -786,6 +786,8 @@ if (!$np->opts->noperfdata && (lc $IFSTATE->{ifOperStatus}->{$ifinfo->{ifOperSta
 {
 	$np->add_perfdata(label => "usage_in", value => sprintf("%.2f", $inspdpct), uom => "%", warning => $np->opts->wpctbps, critical => $np->opts->cpctbps);
 	$np->add_perfdata(label => "usage_out", value => sprintf("%.2f", $outspdpct), uom => "%", warning => $np->opts->wpctbps, critical => $np->opts->cpctbps);
+	$np->add_perfdata(label => "bytes_in", value => int($inbps/8), uom => "B", min => 0, max => $ifinfo->{ifRealSpeed}/8);
+	$np->add_perfdata(label => "bytes_out", value => int($outbps/8), uom => "B", min => 0, max => $ifinfo->{ifRealSpeed}/8);
 	$np->add_perfdata(label => "traffic_in", value => int($inbps), min => 0, max => $ifinfo->{ifRealSpeed}, warning => $np->opts->wbps, critical => $np->opts->cbps);
 	$np->add_perfdata(label => "traffic_out", value => int($outbps), min => 0, max => $ifinfo->{ifRealSpeed}, warning => $np->opts->wbps, critical => $np->opts->cbps);
 	$np->add_perfdata(label => "uni_pps_in", value => int($inpps), warning => $np->opts->wpkts, critical => $np->opts->cpkts);
